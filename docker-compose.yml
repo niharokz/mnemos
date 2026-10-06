@@ -1,0 +1,41 @@
+# samanote — markdown notes with live preview, on the Obsidian vault.
+# Every host-specific value comes from .env (gitignored; template: .env.example).
+# No port is published: Caddy reaches samanote:8080 on the external "homelab" network.
+services:
+  samanote:
+    build: .
+    image: samanote:latest
+    container_name: samanote
+    hostname: samanote
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      TZ: ${TZ:-UTC}
+      SAMANOTE_NOTES: /notes
+      SAMANOTE_LISTEN: ":8080"
+      SAMANOTE_USER: ${SAMANOTE_USER:?set SAMANOTE_USER in .env}
+      SAMANOTE_PASSWORD: ${SAMANOTE_PASSWORD:?set SAMANOTE_PASSWORD in .env}
+      SAMANOTE_SECRET: ${SAMANOTE_SECRET:-}
+      SAMANOTE_HIDDEN: ${SAMANOTE_HIDDEN:-}
+      SAMANOTE_AUTOSAVE_MS: ${SAMANOTE_AUTOSAVE_MS:-1000}
+      SAMANOTE_MAX_FILE_MB: ${SAMANOTE_MAX_FILE_MB:-5}
+    volumes:
+      - ${NOTE_PATH:?set NOTE_PATH in .env}:/notes
+    networks:
+      - homelab
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  homelab:
+    external: true

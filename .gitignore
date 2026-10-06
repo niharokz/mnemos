@@ -1,0 +1,16 @@
+# secrets and local data
+.env
+.env.*
+!.env.example
+notes/
+# build output
+/samanote
+/bin/
+/dist/
+tools/codemirror/node_modules/
+# editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

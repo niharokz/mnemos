@@ -1,0 +1,19 @@
+{
+  "name": "samanote-codemirror-bundle",
+  "private": true,
+  "description": "Builds web/static/vendor/codemirror.js — the only third-party JS in samanote. Run: npm ci && npm run build",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --format=esm --minify --legal-comments=eof --target=es2020 --alias:@codemirror/lang-html=./stub-html.js --outfile=../../web/static/vendor/codemirror.js"
+  },
+  "devDependencies": {
+    "@codemirror/autocomplete": "6.18.6",
+    "@codemirror/commands": "6.8.1",
+    "@codemirror/lang-markdown": "6.3.2",
+    "@codemirror/language": "6.11.0",
+    "@codemirror/search": "6.5.10",
+    "@codemirror/state": "6.5.2",
+    "@codemirror/view": "6.36.8",
+    "@lezer/highlight": "1.2.1",
+    "esbuild": "0.25.4"
+  }
+}
