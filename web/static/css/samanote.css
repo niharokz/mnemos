@@ -176,3 +176,7 @@ kbd { font: .78rem var(--nss-mono); padding: .05em .4em; border: 1px solid var(-
   .side, .side-resizer, .top, .conflict, .pane-edit, .split-resizer, .toast { display: none !important; }
   .app, .panes, .pane-preview { display: block !important; height: auto; overflow: visible; }
 }
+
+/* sign-in card: link back to the public about page */
+.about-link { margin: 14px 0 0; text-align: center; font-size: .85rem; }
+.about-link a { color: var(--nss-muted); }

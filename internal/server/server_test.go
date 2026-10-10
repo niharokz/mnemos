@@ -151,6 +151,58 @@ func TestRenderAndStatic(t *testing.T) {
 		t.Fatalf("etag: %d", w.Code)
 	}
 	if code, _, h := e.do("GET", "/", "", false, false); code != 200 || !strings.Contains(h.Get("Content-Security-Policy"), "script-src 'self'") {
-		t.Fatalf("index: %d", code)
+		t.Fatalf("landing: %d", code)
+	}
+	if code, _, _ := e.do("GET", "/app", "", false, false); code != 200 {
+		t.Fatalf("app: %d", code)
+	}
+	if code, _, _ := e.do("GET", "/index.html", "", false, false); code != 404 {
+		t.Fatalf("html pages only at their routes: %d", code)
+	}
+}
+
+func TestLandingPage(t *testing.T) {
+	e := setup(t)
+	r := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	e.h.ServeHTTP(w, r)
+	body := w.Body.String()
+	if w.Code != 200 || !strings.Contains(body, `href="/app"`) || !strings.Contains(body, "samanote test") || strings.Contains(body, "{{VERSION}}") {
+		t.Fatalf("landing page: %d\n%.300s", w.Code, body)
+	}
+	r = httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("X-Forwarded-Proto", "https")
+	w = httptest.NewRecorder()
+	e.h.ServeHTTP(w, r)
+	if w.Header().Get("Strict-Transport-Security") == "" || w.Header().Get("Cross-Origin-Opener-Policy") != "same-origin" {
+		t.Fatalf("https headers: %v", w.Header())
+	}
+}
+
+func TestCrossSiteChangeRefused(t *testing.T) {
+	e := setup(t)
+	os.WriteFile(filepath.Join(e.dir, "a.md"), []byte("x"), 0o644)
+	r := httptest.NewRequest("POST", "/api/trash", strings.NewReader(`{"path":"a.md"}`))
+	r.AddCookie(e.cookie)
+	r.Header.Set("X-Samanote", "1")
+	r.Header.Set("Sec-Fetch-Site", "cross-site")
+	w := httptest.NewRecorder()
+	e.h.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("cross-site trash: %d", w.Code)
+	}
+	if _, err := os.Stat(filepath.Join(e.dir, "a.md")); err != nil {
+		t.Fatal("file was trashed")
+	}
+}
+
+func TestInternalErrorsHidePaths(t *testing.T) {
+	e := setup(t)
+	os.WriteFile(filepath.Join(e.dir, "a.md"), []byte("x"), 0o644)
+	// make the vault vanish so the tree walk fails with an OS error
+	os.RemoveAll(e.dir)
+	code, out, _ := e.do("GET", "/api/tree", "", true, false)
+	if code != 500 || strings.Contains(out["error"].(string), e.dir) {
+		t.Fatalf("500 leaks path: %d %v", code, out)
 	}
 }

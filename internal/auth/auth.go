@@ -1,10 +1,16 @@
 // Package auth handles samanote's single user: password check, signed session
-// cookies and login rate limiting (same scheme as Arthik).
+// cookies, login rate limiting and the same-origin check for every change.
 //
-// SAMANOTE_PASSWORD may be plain text or a bcrypt hash ($2a$/$2b$/$2y$…, made with
-// `samanote hash-password`). The session is a cookie holding user|expiry|HMAC-SHA256
-// signed with SAMANOTE_SECRET, so it cannot be forged and survives restarts when a
-// secret is set. There is no session store.
+//   - SAMANOTE_PASSWORD may be plain text or a bcrypt hash ($2a$/$2b$/$2y$…, made
+//     with `samanote hash-password`). Credentials are compared in constant time.
+//   - The session is a cookie holding user|expiry|HMAC-SHA256. The HMAC key is
+//     derived from SAMANOTE_SECRET *and* the password, so changing either signs
+//     every device out. There is no session store.
+//   - Over HTTPS the cookie is named "__Host-samanote": browsers then insist on
+//     Secure, Path=/ and no Domain, so no other subdomain can set or read it.
+//   - Behind a proxy the client IP comes from CF-Connecting-IP, X-Real-IP or the
+//     *last* X-Forwarded-For entry (the one your proxy added), never the first one,
+//     which the client controls.
 package auth
 
 import (
@@ -14,6 +20,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -26,23 +33,28 @@ import (
 	"gitlab.com/niharokz/samanote/internal/httpx"
 )
 
-// CookieName is the session cookie.
-const CookieName = "samanote_session"
+// Cookie names: the __Host- one over HTTPS, the plain one for http://localhost.
+const (
+	CookieName       = "samanote_session"
+	SecureCookieName = "__Host-samanote"
+)
 
 // SessionTTL is how long a sign-in lasts.
 const SessionTTL = 30 * 24 * time.Hour
 
-// Limits for failed sign-ins per client IP.
+// Limits for failed sign-ins per client IP: MaxFails within FailWindow locks the
+// IP out until the oldest failure is FailWindow old.
 const (
 	MaxFails   = 5
 	FailWindow = 15 * time.Minute
+	maxTracked = 10000 // IPs remembered at most (bounds memory under a spray attack)
 )
 
 // Auth holds the user, the password and the signing key.
 type Auth struct {
 	user     string
 	password string // plain text or bcrypt hash
-	secret   []byte
+	key      []byte // HMAC key = SHA-256(secret | password)
 	limiter  *limiter
 	now      func() time.Time
 }
@@ -54,10 +66,10 @@ func New(user, password, secret string) *Auth {
 	if secret == "" {
 		b := make([]byte, 32)
 		_, _ = rand.Read(b)
-		a.secret = b
-	} else {
-		a.secret = []byte(secret)
+		secret = hex.EncodeToString(b)
 	}
+	k := sha256.Sum256([]byte("samanote-session\x00" + secret + "\x00" + password))
+	a.key = k[:]
 	return a
 }
 
@@ -72,7 +84,8 @@ func IsHash(s string) bool {
 	return strings.HasPrefix(s, "$2a$") || strings.HasPrefix(s, "$2b$") || strings.HasPrefix(s, "$2y$")
 }
 
-// Check compares a user name and password with the configured ones.
+// Check compares a user name and password with the configured ones. Both are
+// always evaluated, so timing does not reveal which one was wrong.
 func (a *Auth) Check(user, pw string) bool {
 	userOK := subtle.ConstantTimeCompare([]byte(strings.ToLower(strings.TrimSpace(user))), []byte(a.user)) == 1
 	var pwOK bool
@@ -85,7 +98,7 @@ func (a *Auth) Check(user, pw string) bool {
 }
 
 func (a *Auth) sign(payload string) string {
-	m := hmac.New(sha256.New, a.secret)
+	m := hmac.New(sha256.New, a.key)
 	m.Write([]byte(payload))
 	return hex.EncodeToString(m.Sum(nil))
 }
@@ -119,16 +132,27 @@ func (a *Auth) Valid(tok string) bool {
 
 // SignedIn reports whether r carries a valid session cookie.
 func (a *Auth) SignedIn(r *http.Request) bool {
-	c, err := r.Cookie(CookieName)
-	return err == nil && a.Valid(c.Value)
+	for _, name := range []string{SecureCookieName, CookieName} {
+		if c, err := r.Cookie(name); err == nil && a.Valid(c.Value) {
+			return true
+		}
+	}
+	return false
 }
 
 // Register adds the public auth routes: login, logout and me.
 func (a *Auth) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/login", a.login)
 	mux.HandleFunc("POST /api/logout", func(w http.ResponseWriter, r *http.Request) {
-		http.SetCookie(w, &http.Cookie{Name: CookieName, Value: "", Path: "/", MaxAge: -1,
-			HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: secure(r)})
+		if r.Header.Get(httpx.Header) == "" || !httpx.SameOrigin(r) {
+			httpx.Error(w, http.StatusForbidden, "cross-site request refused")
+			return
+		}
+		for _, name := range []string{SecureCookieName, CookieName} {
+			c := &http.Cookie{Name: name, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode}
+			c.Secure = name == SecureCookieName || Secure(r)
+			http.SetCookie(w, c)
+		}
 		httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) {
@@ -138,12 +162,18 @@ func (a *Auth) Register(mux *http.ServeMux) {
 }
 
 func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	if r.Header.Get(httpx.Header) == "" {
 		httpx.Error(w, http.StatusForbidden, "missing "+httpx.Header+" header")
 		return
 	}
-	ip := clientIP(r)
+	if !httpx.SameOrigin(r) {
+		httpx.Error(w, http.StatusForbidden, "cross-site request refused")
+		return
+	}
+	ip := ClientIP(r)
 	if !a.limiter.allow(ip) {
+		log.Printf("login: %s is locked out (too many failed sign-ins)", ip)
 		httpx.Error(w, http.StatusTooManyRequests, "too many failed sign-ins — try again in 15 minutes")
 		return
 	}
@@ -153,32 +183,44 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.Check(in.User, in.Password) {
-		a.limiter.fail(ip)
-		time.Sleep(400 * time.Millisecond) // blunt brute force a little more
+		n := a.limiter.fail(ip)
+		log.Printf("login: failed sign-in from %s (%d of %d)", ip, n, MaxFails)
+		time.Sleep(time.Duration(300+100*n) * time.Millisecond) // blunt brute force a little more
 		httpx.Error(w, http.StatusUnauthorized, "wrong user name or password")
 		return
 	}
 	a.limiter.reset(ip)
+	log.Printf("login: signed in from %s", ip)
+	name := CookieName
+	if Secure(r) {
+		name = SecureCookieName
+	}
 	http.SetCookie(w, &http.Cookie{
-		Name: CookieName, Value: a.Token(a.now().Add(SessionTTL)), Path: "/",
-		MaxAge: int(SessionTTL.Seconds()), HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: secure(r),
+		Name: name, Value: a.Token(a.now().Add(SessionTTL)), Path: "/",
+		MaxAge: int(SessionTTL.Seconds()), HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: Secure(r),
 	})
 	httpx.JSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// secure reports whether the browser reached us over HTTPS (directly or via Caddy/Cloudflare).
-func secure(r *http.Request) bool {
+// Secure reports whether the browser reached us over HTTPS (directly or via the proxy).
+func Secure(r *http.Request) bool {
 	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
-// clientIP prefers the address set by Cloudflare, then the one Caddy adds. The
-// container publishes no port, so only Caddy can reach it and set these headers.
-func clientIP(r *http.Request) string {
-	if v := r.Header.Get("CF-Connecting-IP"); v != "" {
-		return v
+// ClientIP returns the visitor's address: CF-Connecting-IP (Cloudflare), then
+// X-Real-IP, then the last X-Forwarded-For entry (added by your own proxy; the
+// earlier entries come from the client and can be forged), then the socket.
+func ClientIP(r *http.Request) string {
+	for _, h := range []string{"CF-Connecting-IP", "X-Real-IP"} {
+		if v := strings.TrimSpace(r.Header.Get(h)); v != "" && net.ParseIP(v) != nil {
+			return v
+		}
 	}
-	if v := r.Header.Get("X-Forwarded-For"); v != "" {
-		return strings.TrimSpace(strings.Split(v, ",")[0])
+	if xff := r.Header.Values("X-Forwarded-For"); len(xff) > 0 {
+		parts := strings.Split(xff[len(xff)-1], ",")
+		if v := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(v) != nil {
+			return v
+		}
 	}
 	h, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -220,10 +262,21 @@ func (l *limiter) allow(ip string) bool {
 	return len(l.prune(ip, time.Now())) < l.max
 }
 
-func (l *limiter) fail(ip string) {
+// fail records a failure and returns how many the IP now has in the window.
+func (l *limiter) fail(ip string) int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.fails[ip] = append(l.prune(ip, time.Now()), time.Now())
+	now := time.Now()
+	if len(l.fails) >= maxTracked {
+		for k := range l.fails {
+			l.prune(k, now)
+		}
+		if len(l.fails) >= maxTracked {
+			l.fails = map[string][]time.Time{} // still full: start over rather than grow
+		}
+	}
+	l.fails[ip] = append(l.prune(ip, now), now)
+	return len(l.fails[ip])
 }
 
 func (l *limiter) reset(ip string) {

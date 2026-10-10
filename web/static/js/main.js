@@ -43,6 +43,12 @@ const dirOf = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
 const baseOf = (p) => p.slice(p.lastIndexOf("/") + 1);
 
 async function route() {
+  if (location.hash === "#/new") { // home-screen shortcut "New note"
+    replaceHash(doc.path);
+    if (!doc.path) showWelcome();
+    newNote("");
+    return;
+  }
   const p = hashPath();
   if (p === doc.path && p) return;
   await openNote(p);
@@ -207,8 +213,10 @@ async function save({ keepalive = false } = {}) {
       if (e.status === 409 && e.data.conflict) { showConflict(e.data); return false; }
       setStatus("error", e.message);
       if (e.status !== 401) {
-        toast("Couldn't save: " + e.message, true);
-        autosaveTimer = setTimeout(save, 8000);
+        toast("Couldn't save: " + e.message, true, 9000);
+        // network trouble is worth retrying; a refusal (403 permission, 413 size …) is not —
+        // the next edit or Ctrl+S tries again
+        if (e.status === 0 || e.status >= 500) autosaveTimer = setTimeout(save, 8000);
       }
       return false;
     } finally {
@@ -515,7 +523,7 @@ async function start() {
   $("logout-btn").onclick = async () => {
     if (!(await leaveCurrent())) return;
     try { await api.logout(); } catch { /* ignore */ }
-    location.replace("/");
+    location.replace("/app");
   };
 
   // top bar
@@ -564,6 +572,7 @@ async function start() {
   window.addEventListener("hashchange", route);
 
   await loadTree();
+  if (location.hash === "#/new") { await route(); return; }
   if (!hashPath()) {
     const last = prefs.get("last", "");
     if (last && tree.files().some((f) => f.path === last)) replaceHash(last);

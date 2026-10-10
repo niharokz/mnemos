@@ -259,3 +259,53 @@ func TestNaturalLess(t *testing.T) {
 		}
 	}
 }
+
+func TestWriteInPlaceWhenFolderIsReadOnly(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		t.Skip("needs unix permissions and a non-root user")
+	}
+	v, dir := newVault(t)
+	write(t, dir, "locked/n.md", "one")
+	write(t, dir, "locked/ro.md", "two")
+	os.Chmod(filepath.Join(dir, "locked", "ro.md"), 0o444)
+	os.Chmod(filepath.Join(dir, "locked"), 0o555) // like a folder owned by another user
+	defer os.Chmod(filepath.Join(dir, "locked"), 0o755)
+
+	// folder not writable, file writable → saved in place
+	if _, err := v.Write("locked/n.md", "changed", Version([]byte("one")), false); err != nil {
+		t.Fatalf("in-place fallback: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "locked", "n.md")); string(b) != "changed" {
+		t.Fatalf("content = %q", b)
+	}
+	// file not writable either → a clear PermissionError
+	var pe *PermissionError
+	if _, err := v.Write("locked/ro.md", "x", Version([]byte("two")), false); !errors.As(err, &pe) || pe.Path != "locked/ro.md" {
+		t.Fatalf("want PermissionError, got %v", err)
+	}
+	if _, err := v.Create("locked/new.md", false); !errors.As(err, &pe) {
+		t.Fatalf("create in read-only folder: %v", err)
+	}
+	if _, err := v.Trash("locked/n.md"); !errors.As(err, &pe) {
+		t.Fatalf("trash from read-only folder: %v", err)
+	}
+}
+
+func TestCheckListsReadOnly(t *testing.T) {
+	v, dir := newVault(t)
+	write(t, dir, "ok/a.md", "x")
+	rep, err := v.Check(10)
+	if err != nil || rep.Folders != 1 || rep.Files != 1 {
+		t.Fatalf("check: %+v %v", rep, err)
+	}
+	if os.Getuid() == 0 || runtime.GOOS == "windows" {
+		return // root can write anything
+	}
+	write(t, dir, "locked/b.md", "y")
+	os.Chmod(filepath.Join(dir, "locked"), 0o555)
+	defer os.Chmod(filepath.Join(dir, "locked"), 0o755)
+	rep, _ = v.Check(10)
+	if len(rep.ReadOnlyDirs) != 1 || rep.ReadOnlyDirs[0] != "locked" {
+		t.Fatalf("read-only dirs: %+v", rep)
+	}
+}

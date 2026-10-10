@@ -4,6 +4,7 @@
 //
 //	samanote serve            run the web app (default)
 //	samanote hash-password    print a bcrypt hash for SAMANOTE_PASSWORD
+//	samanote check            validate the settings and find files samanote cannot write
 //	samanote health           exit 0 if the running server answers (Docker healthcheck)
 //	samanote version
 package main
@@ -28,14 +29,15 @@ import (
 	"gitlab.com/niharokz/samanote/internal/vault"
 )
 
-// version is set at build time: -ldflags "-X main.version=2.0.0".
-var version = "2.0.0"
+// version is set at build time: -ldflags "-X main.version=2.1.0".
+var version = "2.1.0"
 
 const usage = `
 usage: samanote <command>
 
   serve            run the web app (default)
   hash-password    print a bcrypt hash to use as SAMANOTE_PASSWORD
+  check            validate the settings and list notes/folders samanote cannot write
   health           check that the running server answers
   version          print the version
 `
@@ -53,6 +55,8 @@ func main() {
 		err = serve()
 	case "hash-password":
 		err = hashPassword()
+	case "check":
+		err = check()
 	case "health":
 		err = health()
 	case "version", "--version", "-v":
@@ -78,13 +82,20 @@ func serve() error {
 		return err
 	}
 	a := auth.New(cfg.User, cfg.Password, cfg.Secret)
-	if cfg.Secret == "" {
+	switch {
+	case cfg.Secret == "":
 		log.Printf("WARN SAMANOTE_SECRET is empty — sign-ins will not survive a restart (make one with: openssl rand -hex 32)")
+	case len(cfg.Secret) < 32:
+		log.Printf("WARN SAMANOTE_SECRET is short (%d characters) — use 32 or more: openssl rand -hex 32", len(cfg.Secret))
+	}
+	if !auth.IsHash(cfg.Password) {
+		log.Printf("NOTE SAMANOTE_PASSWORD is plain text — consider storing a bcrypt hash (samanote hash-password)")
 	}
 
 	h := server.New(a, v, server.Options{Version: version, AutosaveMS: cfg.AutosaveMS})
-	srv := &http.Server{Addr: cfg.Listen, Handler: h,
-		ReadTimeout: server.ReadTimeout, WriteTimeout: server.WriteTimeout, IdleTimeout: server.IdleTimeout}
+	srv := &http.Server{Addr: cfg.Listen, Handler: h, ReadHeaderTimeout: server.ReadHeaderTimeout,
+		ReadTimeout: server.ReadTimeout, WriteTimeout: server.WriteTimeout, IdleTimeout: server.IdleTimeout,
+		MaxHeaderBytes: server.MaxHeaderBytes, ErrorLog: log.New(os.Stderr, "http: ", log.LstdFlags)}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -104,6 +115,39 @@ func serve() error {
 		return srv.Shutdown(sctx)
 	}
 	return nil
+}
+
+// check validates the configuration and reports every folder and file in the
+// vault that the current user (the container's PUID:PGID) may not write.
+func check() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	v, err := vault.New(cfg.NotesDir, cfg.TrashDir, cfg.Hidden, cfg.MaxFileBytes())
+	if err != nil {
+		return err
+	}
+	fmt.Printf("samanote %s — notes %s, running as uid %d gid %d\n", version, cfg.NotesDir, os.Getuid(), os.Getgid())
+	fmt.Printf("user %s, password %s, session secret %s\n", cfg.User,
+		map[bool]string{true: "bcrypt hash", false: "plain text"}[auth.IsHash(cfg.Password)],
+		map[bool]string{true: "set", false: "NOT set (sign-ins end on restart)"}[cfg.Secret != ""])
+	rep, err := v.Check(50)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%d folders, %d files\n", rep.Folders, rep.Files)
+	if len(rep.ReadOnlyDirs)+len(rep.ReadOnlyFiles) == 0 {
+		fmt.Println("✓ everything is writable")
+		return nil
+	}
+	for _, d := range rep.ReadOnlyDirs {
+		fmt.Println("  ✗ folder not writable:", d)
+	}
+	for _, f := range rep.ReadOnlyFiles {
+		fmt.Println("  ✗ file not writable:  ", f)
+	}
+	return fmt.Errorf("some notes cannot be saved — on the host, give the vault to PUID:PGID: sudo chown -R %d:%d \"$NOTE_PATH\"", os.Getuid(), os.Getgid())
 }
 
 func hashPassword() error {

@@ -1,6 +1,7 @@
 # secrets and local data
 .env
 .env.*
+.private-words
 !.env.example
 notes/
 # build output

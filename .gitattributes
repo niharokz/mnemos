@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.png binary
+web/static/vendor/** linguist-vendored
+vendor/** linguist-vendored

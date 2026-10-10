@@ -8,7 +8,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"html"
 	"io/fs"
+	"log"
 	"mime"
 	"net/http"
 	"os"
@@ -30,11 +32,13 @@ type Options struct {
 	AutosaveMS int
 }
 
-// Timeouts for the http.Server.
+// Limits for the http.Server.
 const (
-	ReadTimeout  = 30 * time.Second
-	WriteTimeout = 60 * time.Second
-	IdleTimeout  = 120 * time.Second
+	ReadHeaderTimeout = 10 * time.Second
+	ReadTimeout       = 30 * time.Second
+	WriteTimeout      = 60 * time.Second
+	IdleTimeout       = 120 * time.Second
+	MaxHeaderBytes    = 64 << 10
 )
 
 // New returns the HTTP handler.
@@ -61,10 +65,50 @@ func New(a *auth.Auth, v *vault.Vault, opt Options) http.Handler {
 	})
 
 	static, _ := fs.Sub(web.Files, "static")
-	assets := newAssets(static)
-	mux.HandleFunc("GET /{$}", assets.page("index.html"))
+	assets := newAssets(static, opt.Version)
+	mux.HandleFunc("GET /{$}", assets.page("landing.html")) // public about page
+	mux.HandleFunc("GET /app", assets.page("index.html"))   // the app (sign-in card when signed out)
+	mux.HandleFunc("GET /app/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/app", http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write([]byte("User-agent: *\nAllow: /$\nDisallow: /app\nDisallow: /api/\nDisallow: /raw/\n"))
+	})
 	mux.HandleFunc("GET /", assets.serve)
-	return headers(mux)
+	return accessLog(headers(mux))
+}
+
+// accessLog records every request that changes something, and every refusal of
+// one, with time, client IP, method, path and status — never bodies or content.
+func accessLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			next.ServeHTTP(w, r)
+			return
+		}
+		sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
+		start := time.Now()
+		next.ServeHTTP(sw, r)
+		if r.URL.Path == "/api/render" && sw.code < 400 {
+			return // the live preview: one per pause in typing, not worth a line
+		}
+		target := r.URL.Path
+		if p := r.URL.Query().Get("path"); p != "" {
+			target += " " + p
+		}
+		log.Printf("%s %s %s → %d (%s)", auth.ClientIP(r), r.Method, target, sw.code, time.Since(start).Round(time.Millisecond))
+	})
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	code int
+}
+
+func (s *statusWriter) WriteHeader(code int) {
+	s.code = code
+	s.ResponseWriter.WriteHeader(code)
 }
 
 // ---- notes API ---------------------------------------------------------------
@@ -222,6 +266,11 @@ func vaultErr(err error) error {
 		return &httpx.StatusError{Code: http.StatusConflict, Msg: ce.Error(), Body: map[string]any{
 			"conflict": true, "current": ce.Current, "version": ce.Version, "deleted": ce.Deleted,
 		}}
+	}
+	var pe *vault.PermissionError
+	switch {
+	case errors.As(err, &pe):
+		return httpx.Errorf(http.StatusForbidden, "%s", pe.Error())
 	case errors.Is(err, vault.ErrNotFound):
 		return httpx.Errorf(http.StatusNotFound, "%s", "not found — it may have been moved or deleted")
 	case errors.Is(err, vault.ErrExists):
@@ -240,9 +289,10 @@ func vaultErr(err error) error {
 
 // assets serves the embedded files with an ETag and a gzip copy made once.
 type assets struct {
-	fsys  fs.FS
-	mu    sync.Mutex
-	cache map[string]*asset
+	fsys    fs.FS
+	version string // replaces {{VERSION}} in HTML
+	mu      sync.Mutex
+	cache   map[string]*asset
 }
 
 type asset struct {
@@ -250,7 +300,9 @@ type asset struct {
 	etag, ct string
 }
 
-func newAssets(fsys fs.FS) *assets { return &assets{fsys: fsys, cache: map[string]*asset{}} }
+func newAssets(fsys fs.FS, version string) *assets {
+	return &assets{fsys: fsys, version: version, cache: map[string]*asset{}}
+}
 
 func (s *assets) get(name string) (*asset, error) {
 	s.mu.Lock()
@@ -261,6 +313,9 @@ func (s *assets) get(name string) (*asset, error) {
 	b, err := fs.ReadFile(s.fsys, name)
 	if err != nil {
 		return nil, err
+	}
+	if strings.HasSuffix(name, ".html") {
+		b = bytes.ReplaceAll(b, []byte("{{VERSION}}"), []byte(html.EscapeString(s.version)))
 	}
 	sum := sha256.Sum256(b)
 	a := &asset{body: b, etag: `"` + hex.EncodeToString(sum[:8]) + `"`, ct: mime.TypeByExtension(path.Ext(name))}
@@ -331,7 +386,12 @@ func headers(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "same-origin")
 		h.Set("X-Frame-Options", "DENY")
-		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+		h.Set("Cross-Origin-Opener-Policy", "same-origin")
+		h.Set("Cross-Origin-Resource-Policy", "same-origin")
+		if auth.Secure(r) {
+			h.Set("Strict-Transport-Security", "max-age=31536000")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

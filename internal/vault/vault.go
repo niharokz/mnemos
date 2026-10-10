@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -47,6 +48,32 @@ func (e *ConflictError) Error() string {
 	return "the file was changed by another app"
 }
 
+// PermissionError means the operating system refused samanote (the container's
+// PUID:PGID) access to a file or folder in the vault — usually a folder created by
+// another app or container running as a different user.
+type PermissionError struct {
+	Op   string // "save", "create", "rename", "trash", "read"
+	Path string // vault-relative
+}
+
+func (e *PermissionError) Error() string {
+	where := e.Path
+	if where == "" {
+		where = "the vault"
+	}
+	return fmt.Sprintf("permission denied: samanote (uid %d, gid %d) may not %s in %q. "+
+		"The file or folder belongs to another user — on the server, give the notes folder back to PUID:PGID (chown -R)",
+		os.Getuid(), os.Getgid(), e.Op, where)
+}
+
+// perm turns an OS permission error into a PermissionError for rel; other errors pass through.
+func perm(err error, op, rel string) error {
+	if err != nil && errors.Is(err, fs.ErrPermission) {
+		return &PermissionError{Op: op, Path: rel}
+	}
+	return err
+}
+
 // Vault is a notes folder.
 type Vault struct {
 	root     string          // as configured, absolute
@@ -55,6 +82,7 @@ type Vault struct {
 	hidden   map[string]bool // extra names / relative paths to hide
 	maxBytes int64           // files bigger than this open read-only
 	mu       sync.Mutex      // serialises writes made by this process
+	warned   map[string]bool // folders already logged for the in-place fallback
 }
 
 // New opens the vault at root.
@@ -67,7 +95,7 @@ func New(root, trash string, hidden []string, maxBytes int64) (*Vault, error) {
 	if err != nil {
 		return nil, fmt.Errorf("notes folder: %w", err)
 	}
-	v := &Vault{root: abs, real: real, trash: strings.Trim(filepath.ToSlash(trash), "/"), hidden: map[string]bool{}, maxBytes: maxBytes}
+	v := &Vault{root: abs, real: real, trash: strings.Trim(filepath.ToSlash(trash), "/"), hidden: map[string]bool{}, maxBytes: maxBytes, warned: map[string]bool{}}
 	for _, h := range hidden {
 		v.hidden[strings.Trim(filepath.ToSlash(h), "/")] = true
 	}
@@ -272,7 +300,7 @@ func (v *Vault) Read(rel string) (*File, error) {
 	}
 	b, err := os.ReadFile(abs)
 	if err != nil {
-		return nil, notFound(err)
+		return nil, perm(notFound(err), "read", clean)
 	}
 	f.Version = Version(b)
 	if !utf8.Valid(b) || strings.IndexByte(string(b[:min(len(b), 8192)]), 0) >= 0 {
@@ -336,13 +364,44 @@ func (v *Vault) Write(rel, content, base string, force bool) (string, error) {
 		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 			return "", err
 		}
+	case errors.Is(err, fs.ErrPermission):
+		return "", &PermissionError{Op: "read", Path: clean}
 	default:
 		return "", ErrIsDir
 	}
-	if err := atomicWrite(abs, []byte(content), mode); err != nil {
-		return "", err
+	err = atomicWrite(abs, []byte(content), mode)
+	if errors.Is(err, fs.ErrPermission) && cur != nil {
+		// The folder is not writable for us (no temp file allowed) but the file may
+		// be: overwrite it in place, as the old samanote did. Not atomic, still safe
+		// enough for a note, and the version check above already ran.
+		if dir := path.Dir(clean); !v.warned[dir] {
+			v.warned[dir] = true
+			log.Printf("WARN folder %q is not writable for uid %d — saving in place instead of atomically; fix its ownership", dir, os.Getuid())
+		}
+		err = inPlaceWrite(abs, []byte(content))
+	}
+	if err != nil {
+		return "", perm(err, "save", clean)
 	}
 	return Version([]byte(content)), nil
+}
+
+// inPlaceWrite truncates and rewrites an existing file (needs write permission on
+// the file only, not on its folder).
+func inPlaceWrite(abs string, b []byte) error {
+	f, err := os.OpenFile(abs, os.O_WRONLY|os.O_TRUNC, 0)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // atomicWrite writes next to the target and renames over it, so readers (Obsidian,
@@ -394,17 +453,17 @@ func (v *Vault) Create(rel string, folder bool) (string, error) {
 		return "", ErrExists
 	}
 	if folder {
-		return clean, os.MkdirAll(abs, 0o755)
+		return clean, perm(os.MkdirAll(abs, 0o755), "create", clean)
 	}
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		return "", err
+		return "", perm(err, "create", clean)
 	}
 	f, err := os.OpenFile(abs, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return "", ErrExists
 		}
-		return "", err
+		return "", perm(err, "create", clean)
 	}
 	return clean, f.Close()
 }
@@ -446,9 +505,9 @@ func (v *Vault) Move(from, to string) (string, error) {
 		return "", ErrExists // (SameFile allows "Note.md" → "note.md" on case-insensitive disks)
 	}
 	if err := os.MkdirAll(filepath.Dir(tabs), 0o755); err != nil {
-		return "", err
+		return "", perm(err, "rename", tc)
 	}
-	return tc, os.Rename(fabs, tabs)
+	return tc, perm(os.Rename(fabs, tabs), "rename", fc)
 }
 
 // Trash moves a file or folder into the vault's trash folder (the one Obsidian
@@ -468,7 +527,7 @@ func (v *Vault) Trash(rel string) (string, error) {
 	defer v.mu.Unlock()
 	dir := filepath.Join(v.root, filepath.FromSlash(v.trash))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
+		return "", perm(err, "trash", v.trash)
 	}
 	base := path.Base(clean)
 	ext := path.Ext(base)
@@ -488,7 +547,7 @@ func (v *Vault) Trash(rel string) (string, error) {
 		name = stem + " " + strconv.Itoa(i) + ext
 	}
 	if err := os.Rename(abs, filepath.Join(dir, name)); err != nil {
-		return "", err
+		return "", perm(err, "trash", clean)
 	}
 	return v.trash + "/" + name, nil
 }
@@ -518,4 +577,45 @@ func notFound(err error) error {
 		return ErrNotFound
 	}
 	return err
+}
+
+// Report is the result of Check.
+type Report struct {
+	Folders, Files int
+	ReadOnlyDirs   []string // folders samanote cannot create, rename or trash in
+	ReadOnlyFiles  []string // files samanote cannot save
+}
+
+// Check walks the vault (skipping hidden entries) and lists every folder and file
+// this process may not write — usually ones created by another app or container
+// running as a different user. At most limit paths of each kind are kept.
+func (v *Vault) Check(limit int) (*Report, error) {
+	rep := &Report{}
+	if !writable(v.root) {
+		rep.ReadOnlyDirs = append(rep.ReadOnlyDirs, "(vault root)")
+	}
+	t, err := v.Tree()
+	if err != nil {
+		return nil, err
+	}
+	var walk func(n *Node)
+	walk = func(n *Node) {
+		for _, c := range n.Children {
+			abs := filepath.Join(v.root, filepath.FromSlash(c.Path))
+			if c.Dir {
+				rep.Folders++
+				if !writable(abs) && len(rep.ReadOnlyDirs) < limit {
+					rep.ReadOnlyDirs = append(rep.ReadOnlyDirs, c.Path)
+				}
+				walk(c)
+				continue
+			}
+			rep.Files++
+			if !writable(abs) && len(rep.ReadOnlyFiles) < limit {
+				rep.ReadOnlyFiles = append(rep.ReadOnlyFiles, c.Path)
+			}
+		}
+	}
+	walk(t)
+	return rep, nil
 }

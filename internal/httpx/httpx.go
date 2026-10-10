@@ -9,13 +9,33 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"runtime/debug"
+	"strings"
 )
 
 // Header must be present on every request that changes something. Browsers cannot
 // add a custom header to a cross-site request without CORS (which samanote never
 // grants), so together with SameSite cookies this blocks cross-site forgery.
 const Header = "X-Samanote"
+
+// SameOrigin is the CSRF check for every request that changes something: modern
+// browsers send Sec-Fetch-Site, and all send Origin on cross-site POSTs. A
+// request from another site is refused; one without either header (curl, old
+// browsers) passes this check but still needs the X-Samanote header and the
+// SameSite session cookie.
+func SameOrigin(r *http.Request) bool {
+	if s := r.Header.Get("Sec-Fetch-Site"); s != "" && s != "same-origin" && s != "none" {
+		return false
+	}
+	if o := r.Header.Get("Origin"); o != "" {
+		u, err := url.Parse(o)
+		if err != nil || !strings.EqualFold(u.Host, r.Host) {
+			return false
+		}
+	}
+	return true
+}
 
 // StatusError is an error with an HTTP status.
 type StatusError struct {
@@ -79,9 +99,15 @@ func (rt *Router) Handle(pattern string, h HandlerFunc) {
 			Error(w, http.StatusUnauthorized, "please sign in")
 			return
 		}
-		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get(Header) == "" {
-			Error(w, http.StatusForbidden, "missing "+Header+" header")
-			return
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			if r.Header.Get(Header) == "" {
+				Error(w, http.StatusForbidden, "missing "+Header+" header")
+				return
+			}
+			if !SameOrigin(r) {
+				Error(w, http.StatusForbidden, "cross-site request refused")
+				return
+			}
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		if err := h(w, r); err != nil {
@@ -94,8 +120,9 @@ func (rt *Router) Handle(pattern string, h HandlerFunc) {
 				JSON(w, se.Code, body)
 				return
 			}
+			// details (which may include server paths) go to the log, not the browser
 			log.Printf("ERROR %s %s: %v", r.Method, r.URL.Path, err)
-			Error(w, http.StatusInternalServerError, err.Error())
+			Error(w, http.StatusInternalServerError, "internal error — see the server log")
 		}
 	})
 }

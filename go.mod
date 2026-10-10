@@ -7,6 +7,6 @@ require (
 	golang.org/x/crypto v0.31.0
 )
 
-// Fetched through its GitHub mirror (same approach as Arthik/Omnimo/Kronos), so the
-// build works where golang.org is blocked.
+// Dependencies are vendored (vendor/), so building needs no network. The GitHub
+// mirror of x/crypto is the same code; it is only used when re-vendoring.
 replace golang.org/x/crypto => github.com/golang/crypto v0.31.0

@@ -6,7 +6,7 @@ in `.env` only.
 ## Shape
 
 ```
-browser ──HTTPS──▶ Cloudflare / Caddy ──▶ samanote:8080 (homelab network, no published port)
+browser ──HTTPS──▶ Cloudflare / Caddy ──▶ samanote:8080 (shared Docker network, no published port)
                                               │
                                               ▼
                                    /notes  (bind mount of NOTE_PATH — the Obsidian vault)
@@ -20,7 +20,7 @@ samanote keeps nothing else (no index, no database, no cache files in the vault)
 ## Code map
 
 ```
-cmd/samanote/main.go     serve | hash-password | health | version
+cmd/samanote/main.go     serve | hash-password | check | health | version
 internal/config/         SAMANOTE_* env (+ optional .env in the working dir) → Config, validated at start
 internal/auth/           password check (plain | bcrypt), HMAC-signed session cookie, sign-in rate limit, /api/login|logout|me
 internal/httpx/          JSON helpers, StatusError, Router (session check + X-Samanote header + panic recovery)
@@ -29,7 +29,8 @@ internal/render/         goldmark (GFM + footnotes + hard wraps), frontmatter bl
 internal/server/         routes, error → status mapping, /raw, embedded assets (ETag + gzip), security headers
 web/embed.go             go:embed of web/static
 web/static/
-  index.html             sign-in card + app shell + SVG icon sprite
+  landing.html           public about page at / (install steps, features, Sign in)
+  index.html             the app at /app: sign-in card + app shell + SVG icon sprite
   css/nss-app.css        shared nss look for apps (same tokens as nss 3.0) — copy unchanged into Natlas/Arthik
   css/samanote.css       app-only layout, tree, panes, CodeMirror colours, preview typography
   js/main.js             app logic: routing, open/save/conflict, views, file actions, sidebar, resizers
@@ -38,8 +39,13 @@ web/static/
   js/tree.js             file tree + filter
   js/api.js              fetch wrapper (adds X-Samanote, maps errors, 401 → sign-in)
   js/ui.js               h() element builder, prefs (localStorage), toast, sheet prompt/confirm/menu
+  css/landing.css        about-page layout (shared with Natlas/Arthik)
+  js/landing.js          about page: sends installed-app launches and old /#/n/ links to /app
   vendor/codemirror.js   CodeMirror 6 bundle (built by tools/codemirror, committed)
+  vendor/nss.min.css     nss subset used by the about page
 tools/codemirror/        package.json + entry.js + stub-html.js to rebuild the bundle
+scripts/check-public.sh  pre-push hook: blocks committed secrets and private words
+vendor/                  Go dependencies (goldmark, x/crypto/bcrypt) — builds need no network
 ```
 
 ## HTTP API
@@ -50,8 +56,11 @@ custom headers without CORS, which is never granted; cookies are `SameSite=Lax`)
 
 | Method | Path | Body → reply |
 |---|---|---|
-| POST | `/api/login` | `{user, password}` → sets `samanote_session` |
-| POST | `/api/logout` | clears the cookie |
+| GET | `/` | public about page (`{{VERSION}}` filled in) |
+| GET | `/app` | the app; `/app/` redirects here |
+| GET | `/robots.txt` | allows `/`, disallows `/app`, `/api/`, `/raw/` |
+| POST | `/api/login` | `{user, password}` → sets `__Host-samanote` (HTTPS) or `samanote_session` (plain http) |
+| POST | `/api/logout` | clears both cookies |
 | GET | `/api/me` | `{signed_in}` |
 | GET | `/api/config` | `{version, autosave_ms, max_bytes}` |
 | GET | `/api/tree` | nested `{name, path, dir, size, mtime, children}` |
@@ -64,6 +73,19 @@ custom headers without CORS, which is never granted; cookies are `SameSite=Lax`)
 | POST | `/api/render` | `{path, content}` → `{html}` |
 | GET | `/raw/<path>` | the file as-is, own CSP `sandbox`; HTML/JS/XML sent as `text/plain` |
 | GET | `/healthz` | `ok` (Docker healthcheck via `samanote health`) |
+
+## Security model
+
+- **Session.** Cookie value is `base64(user|expiry|HMAC-SHA256)`. The HMAC key is `SHA-256("samanote-session" | SAMANOTE_SECRET | password)`, so changing the password or the secret invalidates every session. Over HTTPS the cookie is `__Host-samanote` (Secure, Path=/, no Domain). 30 days, HttpOnly, SameSite=Lax.
+- **CSRF.** Every non-GET request needs the `X-Samanote` header *and* must pass `httpx.SameOrigin`: `Sec-Fetch-Site` must be `same-origin`/`none` when present, and `Origin` must match `Host` when present. Login and logout too.
+- **Login.** Constant-time user + password check (bcrypt or plain). 5 failures per IP per 15 min → 429; each failure is slowed a little more. The limiter holds at most 10 000 IPs.
+- **Client IP.** `CF-Connecting-IP`, then `X-Real-IP`, then the **last** `X-Forwarded-For` entry, then the socket. Only valid IPs are accepted. This trusts your proxy; the container must not be reachable except through it.
+- **Headers.** CSP (`script-src 'self'`; inline styles allowed for CodeMirror), HSTS over HTTPS, X-Frame-Options DENY, nosniff, Referrer-Policy same-origin, COOP/CORP same-origin, Permissions-Policy. `/raw` adds its own `sandbox` CSP.
+- **Errors.** Unexpected errors are logged in full and returned as "internal error — see the server log" (no server paths in the browser). Permission problems return 403 naming the vault-relative path and the uid.
+- **Logging.** Every non-GET request (except successful previews) is logged as `ip method path [note] → status (duration)`; sign-ins and failed sign-ins are logged with the IP. Never bodies, passwords or note contents.
+- **Server limits.** ReadHeaderTimeout 10 s, Read 30 s, Write 60 s, Idle 120 s, headers ≤ 64 KB, JSON bodies ≤ 2×max file size.
+- **Container.** `FROM scratch`, runs as PUID:PGID, read-only root, `cap_drop: ALL`, `no-new-privileges`, only `/notes` writable, no published port.
+- **Startup checks.** A placeholder password (`change-me`, …) refuses to start; an empty or short secret and a plain-text password are warned about.
 
 ## Rules that matter
 
@@ -83,6 +105,10 @@ what is on disk, or `deleted: true` if the file is gone. `force: true` ("keep mi
 **Writes.** Temp file `.samanote-*.tmp` in the same folder → write → fsync → chmod to
 the old mode → rename over the target. Readers only ever see the old or the new file.
 The temp name starts with a dot, so Obsidian and the tree ignore it.
+If the folder itself is not writable for PUID:PGID (e.g. created by a container
+running as root) but the file is, the save falls back to overwriting the file in
+place, and a warning is logged once per folder. Anything else the OS refuses comes
+back as a 403 that names the path and the uid, telling you to fix the ownership.
 
 **Trash.** Trash moves into `<vault>/<SAMANOTE_TRASH>` (default `.trash`), flat, with
 " 2", " 3" … before the extension when a name is taken. samanote never deletes.
@@ -105,7 +131,7 @@ save, which brings up the conflict bar. 404: the "deleted" conflict bar.
 - CodeMirror's `@codemirror/lang-html` is replaced with a stub at bundle time (HTML-in-markdown highlighting and tag completion are not needed); that saves ~160 KB. The bundle is ~355 KB, ~118 KB gzipped; the server gzips embedded assets once at start-up and serves them with ETags (`Cache-Control: no-cache` → cheap 304s, new deploys show at once).
 - CSRF/XSS: CSP is `script-src 'self'`; `style-src` allows inline because CodeMirror injects its styles. Preview HTML comes only from the server renderer.
 - Per-device settings in `localStorage` (`samanote.*`): view, split %, sidebar width/collapsed, open folders, last note, theme. Everything works if storage is blocked.
-- Routing: `#/n/<url-encoded path>`; back/forward work; the last note reopens on start.
+- Routing: the app lives at `/app`; notes are `/app#/n/<url-encoded path>`, `/app#/new` opens "New note" (home-screen shortcut). Back/forward work; the last note reopens on start.
 - Views: `edit | split | preview`; under 820 px "split" shows the editor only and the Split button hides. Under 900 px the sidebar is a drawer.
 
 ## Shared nss for apps
@@ -116,8 +142,9 @@ buttons, inputs, `.seg`, `dialog.sheet`, `.menu`, `.toast`, `.badge`, sign-in `.
 The plan is to drop the same file into Natlas v2 and Arthik and keep only app-specific
 rules in each app's own CSS.
 
-## Deploy (homelab)
+## Deploy
 
-1. The shared `.env` (symlinked into the compose folder) already has `NOTE_PATH`, `PUID`, `PGID`, `TZ`; add the `SAMANOTE_*` keys.
-2. `git clone` into the compose folder (keep the `.env` symlink), then `docker compose up -d --build`.
-3. The container is named `samanote` on the external `homelab` network, so the existing Caddy block (`reverse_proxy samanote:8080`) works unchanged.
+1. `.env` (or a shared `.env` symlinked into the folder) holds `NOTE_PATH`, `PUID`, `PGID`, `TZ`, `SAMANOTE_NETWORK` and the `SAMANOTE_*` keys. Compose passes only `TZ` and `SAMANOTE_*` into the container.
+2. `docker compose run --rm samanote check` — settings plus every folder/file the container user cannot write.
+3. `docker compose up -d --build`. The container is `samanote` on the external network, so the proxy block is `reverse_proxy samanote:8080`.
+4. Release: bump `VERSION` in `docker-compose.yml` and `version` in `cmd/samanote/main.go`, add a `CHANGELOG.md` entry.

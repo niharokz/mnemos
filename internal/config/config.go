@@ -106,6 +106,10 @@ func Load() (Config, error) {
 	if c.Password == "" {
 		return c, fmt.Errorf("SAMANOTE_PASSWORD is not set (put it in .env — plain text or a hash from `samanote hash-password`)")
 	}
+	switch strings.ToLower(c.Password) {
+	case "change-me", "changeme", "password", "admin", "secret":
+		return c, fmt.Errorf("SAMANOTE_PASSWORD is still a placeholder (%q) — set a real one", c.Password)
+	}
 	if strings.Contains(c.TrashDir, "..") || strings.HasPrefix(c.TrashDir, "/") || c.TrashDir == "" {
 		return c, fmt.Errorf("SAMANOTE_TRASH=%q must be a folder name inside the vault, e.g. .trash", c.TrashDir)
 	}

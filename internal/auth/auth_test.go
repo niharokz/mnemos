@@ -78,3 +78,63 @@ func TestLoginFlowAndRateLimit(t *testing.T) {
 		t.Fatalf("after %d fails: %d", MaxFails, w.Code)
 	}
 }
+
+func TestPasswordChangeSignsOut(t *testing.T) {
+	tok := New("me", "old-password", "secret").Token(time.Now().Add(time.Hour))
+	if New("me", "new-password", "secret").Valid(tok) {
+		t.Fatal("session survived a password change")
+	}
+	if !New("me", "old-password", "secret").Valid(tok) {
+		t.Fatal("same settings must keep the session")
+	}
+}
+
+func TestSecureCookieAndCrossSite(t *testing.T) {
+	a := New("me", "right", "s")
+	mux := http.NewServeMux()
+	a.Register(mux)
+	r := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"user":"me","password":"right"}`))
+	r.Header.Set("X-Samanote", "1")
+	r.Header.Set("X-Forwarded-Proto", "https")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	c := w.Result().Cookies()[0]
+	if c.Name != SecureCookieName || !c.Secure {
+		t.Fatalf("https cookie: %+v", c)
+	}
+	r = httptest.NewRequest("GET", "/", nil)
+	r.AddCookie(&http.Cookie{Name: SecureCookieName, Value: c.Value})
+	if !a.SignedIn(r) {
+		t.Fatal("__Host- cookie not accepted")
+	}
+	// a page on another site posting the login form
+	r = httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"user":"me","password":"right"}`))
+	r.Header.Set("X-Samanote", "1")
+	r.Header.Set("Origin", "https://evil.example")
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("cross-origin login: %d", w.Code)
+	}
+}
+
+func TestClientIP(t *testing.T) {
+	cases := []struct {
+		h    map[string]string
+		want string
+	}{
+		{map[string]string{"CF-Connecting-IP": "203.0.113.5", "X-Forwarded-For": "1.1.1.1"}, "203.0.113.5"},
+		{map[string]string{"X-Real-IP": "203.0.113.6"}, "203.0.113.6"},
+		{map[string]string{"X-Forwarded-For": "6.6.6.6, 203.0.113.7"}, "203.0.113.7"}, // first entry is forgeable
+		{map[string]string{"CF-Connecting-IP": "not-an-ip"}, "192.0.2.1"},
+	}
+	for _, c := range cases {
+		r := httptest.NewRequest("GET", "/", nil)
+		for k, v := range c.h {
+			r.Header.Set(k, v)
+		}
+		if got := ClientIP(r); got != c.want {
+			t.Errorf("%v → %s, want %s", c.h, got, c.want)
+		}
+	}
+}
