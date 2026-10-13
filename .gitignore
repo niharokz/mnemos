@@ -3,7 +3,7 @@
 .env.*
 .private-words
 !.env.example
-notes/
+/notes/
 # build output
 /mnemos
 /bin/
