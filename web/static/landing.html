@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#3a807a">
-<meta name="description" content="samanote: a small self-hosted markdown editor with live preview for your notes folder (an Obsidian vault works great). Plain files, autosave that never overwrites other apps' edits, trash instead of delete. One Go binary, no database, no tracking.">
-<title>samanote - your notes, in plain markdown, anywhere</title>
+<meta name="description" content="Mnemos: your notes folder (an Obsidian vault works great) on the web and on Android. Markdown with live preview, CSV as real tables, one search box, Syncthing conflict merge, trash with restore. Plain files, self-hosted, no tracking.">
+<title>Mnemos - your notes, plain files, web and Android</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg?v={{VERSION}}" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon-192.png?v={{VERSION}}">
@@ -16,64 +16,121 @@
 <body>
 <main class="about">
   <nav>
-    <a class="brand" href="/"><img src="/icon.svg?v={{VERSION}}" alt="" width="34" height="34">samanote</a>
-    <a class="btn" href="#install">Install</a>
+    <a class="brand" href="/"><img src="/icon.svg?v={{VERSION}}" alt="" width="34" height="34"><span>mnemos</span></a>
+    <a class="btn hide-sm" href="#android">Android</a>
+    <a class="btn hide-sm" href="#install">Install</a>
     <a class="btn primary" href="/app">Sign in</a>
   </nav>
 
-  <h1 class="lead">Your notes, <em>in plain markdown</em>, <em>anywhere you are</em>.</h1>
-  <p class="intro">samanote is a small self-hosted web editor for a folder of markdown notes - for example the vault you
-    already open in Obsidian. Pick a note, write, watch the preview update as you type, and it saves itself.
-    Your notes stay ordinary <code>.md</code> files: no database, no lock-in, nothing extra written next to them.</p>
+  <h1 class="lead">Your notes, <em>plain files</em>, on the <em>web</em> and in your <em>pocket</em>.</h1>
+  <p class="intro">Mnemos opens a folder of text files - for example the vault you already use in Obsidian - in your
+    browser and on your Android phone. Write markdown with a live preview, edit CSV as a real table, search everything
+    from one box, and settle Syncthing conflicts side by side. Nothing is locked in: every note stays an ordinary file.</p>
   <div class="cta">
     <a class="btn primary" href="/app">Sign in</a>
-    <a class="btn" href="#install">Install your own</a>
-    <a class="btn" href="https://gitlab.com/niharokz/samanote">Source code</a>
+    <a class="btn" href="#android">Get the Android app</a>
+    <a class="btn" href="#install">Host your own</a>
   </div>
-  <p class="muted">This is a private instance - there is no public demo. samanote is free and open source;
-    the steps below get your own copy running in about five minutes.</p>
+  <p class="muted">Just curious? The sign-in page has a <strong>read-only demo</strong> with a sample vault - type, tick
+    and preview freely; nothing is saved.</p>
 
   <div class="shot" aria-label="Example: a note and its live preview">
-    <div class="bar"><i></i><i></i><i></i>journal/2026-10-10.md<b>● Saved</b></div>
+    <div class="bar"><i></i><i></i><i></i>notes/projects/garden.md<b>● Saved</b></div>
     <div class="split">
 <pre>---
-tags: [journal]
+status: open
+tags: [garden, home]
 ---
-# Saturday
+# Balcony garden
 
-Long run done, **21 km**.
-Notes from the book in [reading](../reading.md).
+Basil and mint by the window;
+chillies need **more sun**.
 
-- [x] stretch
-- [ ] book next race</pre>
+- [x] Repot the mint
+- [ ] Order coco peat</pre>
       <div class="out">
-        <h3>Saturday</h3>
-        <p>Long run done, <strong>21 km</strong>.<br>Notes from the book in <a href="#">reading</a>.</p>
-        <ul><li class="done">stretch</li><li>book next race</li></ul>
+        <p class="props">status: open · tags: garden, home</p>
+        <h3>Balcony garden</h3>
+        <p>Basil and mint by the window;<br>chillies need <strong>more sun</strong>.</p>
+        <ul class="tasks"><li class="done">Repot the mint</li><li>Order coco peat</li></ul>
       </div>
     </div>
   </div>
 
   <section class="feat" aria-label="Features">
-    <div class="card"><h2>✍️ Editor + live preview</h2><p>Side by side on a desktop, one at a time on a phone. Markdown highlighting, find &amp; replace, lists that continue on Enter, undo.</p></div>
-    <div class="card"><h2>💾 Saves itself</h2><p>Autosave a second after you stop typing, <kbd>Ctrl</kbd> <kbd>S</kbd> any time, and a status dot that tells you it is on disk.</p></div>
-    <div class="card"><h2>🤝 Never loses an edit</h2><p>Changed in Obsidian or by Syncthing while you typed? You choose: load theirs, keep yours, or save yours as a copy. Nothing is overwritten silently.</p></div>
-    <div class="card"><h2>🔄 Picks up outside edits</h2><p>Come back to the tab and a note that changed elsewhere reloads by itself - cursor and scroll kept - when you had nothing unsaved.</p></div>
-    <div class="card"><h2>🗑️ Nothing is deleted</h2><p>"Delete" moves a note to the vault's <code>.trash</code> folder, the one Obsidian uses. Restore it from there any time.</p></div>
-    <div class="card"><h2>📄 Plain files</h2><p>No database, no index, no extra files. Saves are atomic, line endings and file permissions are kept, unchanged notes are never rewritten.</p></div>
-    <div class="card"><h2>🗂️ Folders &amp; filter</h2><p>A folder tree that remembers what is open, a filter box, new note or folder anywhere, rename and move that never overwrite.</p></div>
-    <div class="card"><h2>📱 Any screen</h2><p>Drawer and full-screen panes on a phone, resizable sidebar and split on a desktop. Add it to your home screen like an app.</p></div>
-    <div class="card"><h2>🖼️ Real preview</h2><p>Tables, task lists, footnotes, strikethrough, autolinks, properties, images from your vault, and links that open the other note.</p></div>
-    <div class="card"><h2>🔒 Private by design</h2><p>Single user, bcrypt password, signed cookies, login lockout, strict browser policies, no third-party requests and no tracking.</p></div>
-    <div class="card"><h2>🪶 Tiny</h2><p>One Go binary with the web app built in, in an empty Docker image. Runs as your own user with a read-only filesystem.</p></div>
-    <div class="card"><h2>🌗 Light &amp; dark</h2><p>The <a href="https://gitlab.com/niharokz/nss">nss</a> teal theme follows your system, with a manual switch. Large tap targets, readable on any screen.</p></div>
+    <div class="card"><h2>✍️ Markdown, live</h2><p>Edit, Split or Preview. Highlighting, a formatting bar, find &amp; replace, lists that continue on Enter, and task boxes you can tick right in the preview.</p></div>
+    <div class="card"><h2>📊 CSV as a table</h2><p><code>.csv</code> and <code>.tsv</code> open as a grid: sticky header, sort and filter, edit a cell, add or delete rows, column stats. An untouched file is saved byte for byte.</p></div>
+    <div class="card"><h2>🔎 One search box</h2><p>File names (fuzzy), full text, <code>#tags</code> and properties like <code>status: open</code>. Results jump to the line. <kbd>Ctrl</kbd> <kbd>K</kbd>.</p></div>
+    <div class="card"><h2>🤝 Sync conflicts, settled</h2><p>Syncthing's <code>.sync-conflict</code> copies are listed and compared side by side. Keep one, or merge by hand; the other goes to the trash.</p></div>
+    <div class="card"><h2>💾 Never loses an edit</h2><p>Autosave with a version check: if Obsidian or Syncthing changed the file meanwhile, you choose - load theirs, keep yours, or save yours as a copy.</p></div>
+    <div class="card"><h2>🗑️ Trash with restore</h2><p>Delete moves to the vault's <code>.trash</code>, the folder Obsidian uses. Restore from the sidebar, back to where it came from.</p></div>
+    <div class="card"><h2>⚡ Capture</h2><p>A thought, a link, a todo: <kbd>Alt</kbd> <kbd>C</kbd> appends a time-stamped line to your inbox note. Installed on a phone, Mnemos is a share target too.</p></div>
+    <div class="card"><h2>🗂️ Cards, pins, recent</h2><p>See a folder as boxes with note previews, pin the notes you live in, jump back to what you opened. New notes from your <code>templates/</code> folder.</p></div>
+    <div class="card"><h2>🖼️ Images, any file</h2><p>Paste, drop or pick photos into a note - saved beside it in <code>attachments/</code>. Obsidian <code>![[embeds]]</code> show too. Logs, JSON, YAML and code open in the editor.</p></div>
+    <div class="card"><h2>📱 Any screen</h2><p>Drawer and full-screen panes on a phone, resizable sidebar and split on a desktop. Add it to the home screen like an app.</p></div>
+    <div class="card"><h2>🔒 Private by design</h2><p>Your account plus an optional read-only demo user. bcrypt, signed cookies, login lockout, strict browser policies, no third-party requests.</p></div>
+    <div class="card"><h2>🪶 Tiny</h2><p>One Go binary with the web app built in, in an empty, read-only Docker image. No database: the files are the database.</p></div>
+  </section>
+
+  <section class="android" id="android" aria-labelledby="android-h">
+    <div class="a-head">
+      <div>
+        <p class="kicker">Mnemos for Android</p>
+        <h2 id="android-h">The same vault, <em>fully offline</em>, on your phone.</h2>
+        <p>A native Jetpack Compose app with Material 3 and the nss look, for the folder Syncthing keeps on your phone.
+          The APK has <strong>no internet permission</strong> at all: no analytics, no crash upload, no Google services.</p>
+        <div class="cta">
+          <a class="btn primary" href="https://gitlab.com/niharokz/mnemos/-/releases/permalink/latest/downloads/mnemos.apk">Download the APK</a>
+          <a class="btn" href="https://gitlab.com/niharokz/mnemos/-/releases">All releases</a>
+        </div>
+        <p class="muted">Android 12 or newer · sideloaded, no Play Store · signed with one key, so updates install over the top.</p>
+      </div>
+      <div class="phone" aria-hidden="true">
+        <div class="ph-bar"><span>~/mnemos_</span><i>⌕</i></div>
+        <div class="ph-card"><b>Balcony garden</b><span>Basil and mint by the window; chillies need more sun.</span></div>
+        <div class="ph-card"><b>Todo</b><span>☐ Renew bus pass<br>☐ Book 10K race</span></div>
+        <div class="ph-card warn"><b>todo · sync conflict</b><span>Compare and merge</span></div>
+        <div class="ph-fab">+</div>
+      </div>
+    </div>
+    <div class="feat small">
+      <div class="card"><h3>🔐 Lock</h3><p>PIN or password plus fingerprint, auto-lock, hidden in Recents.</p></div>
+      <div class="card"><h3>🧩 Widgets &amp; tile</h3><p>New note, quick capture, recent and pinned notes, a Quick Settings tile, app shortcuts.</p></div>
+      <div class="card"><h3>📤 Photos &amp; sharing</h3><p>Add photos to a note from the gallery or camera, or share a link, text or photo from any app into your share note.</p></div>
+      <div class="card"><h3>🐘 Big files</h3><p>Logs over 2 MB open in a memory-mapped viewer with search and follow-tail.</p></div>
+      <div class="card"><h3>🎨 Your colours</h3><p>Light and dark themes with your own background, card and accent; the icon follows.</p></div>
+      <div class="card"><h3>👀 Demo user</h3><p>Try everything on a sample vault before granting any permission.</p></div>
+    </div>
+
+    <h3 class="sub">Install from GitLab</h3>
+    <ol class="steps">
+      <li><h3>Download</h3><p>On the phone, open <a href="https://gitlab.com/niharokz/mnemos/-/releases">GitLab Releases</a> and tap
+        <strong>mnemos.apk</strong> under the latest release (the button above always points there).</p></li>
+      <li><h3>Allow the install</h3><p>Open the download. When Android asks, allow <em>Install unknown apps</em> for your browser or
+        file manager, then tap <strong>Install</strong>. Play Protect may ask to scan an app it has not seen - that is expected for sideloaded apps.</p></li>
+      <li><h3>Set it up</h3><p>Choose <strong>My notes</strong>, grant <strong>All files access</strong> and pick your vault folder
+        (folders with <code>.obsidian</code> or <code>.stfolder</code> are highlighted). Set a PIN and, if you like, fingerprint unlock.
+        Or tap <strong>Demo user</strong> to look around first.</p></li>
+      <li><h3>Update, even offline</h3><p>Install a newer APK the same way, or drop <code>mnemos-&lt;version&gt;.apk</code> into
+        <code>&lt;vault&gt;/apps/</code>: once Syncthing brings it over, <em>Settings → Update → Check vault for update</em> installs it
+        after checking it is the same app, a higher version and signed with the same key.</p></li>
+    </ol>
+    <details class="build">
+      <summary>Build the APK yourself</summary>
+      <p class="muted">Only Docker is needed. The signing key lives outside the repo in <code>~/.mnemos-keys</code> - back it up, updates must use the same key.</p>
+      <pre>git clone https://gitlab.com/niharokz/mnemos.git
+cd mnemos/android
+./build.sh keystore   # once: creates the signing key
+./build.sh            # → dist/mnemos-&lt;version&gt;.apk
+./build.sh install    # optional: adb install over USB</pre>
+    </details>
   </section>
 
   <h2>What it is not</h2>
-  <p class="muted">samanote is a web editor for your files, not an Obsidian clone. On purpose, it has no:</p>
+  <p class="muted">Mnemos is an editor for your files, not an Obsidian clone. On purpose, it has no:</p>
   <ul class="not">
-    <li>wikilinks, backlinks, graph view, tags pane, embeds or callouts - use Obsidian for those, on the same files;</li>
-    <li>sync - pair it with Syncthing, git or whatever already moves your notes;</li>
+    <li>wikilinks, backlinks, graph view, embeds or callouts - use Obsidian for those, on the same files;</li>
+    <li>sync of its own - pair it with Syncthing, git or whatever already moves your notes;</li>
     <li>plugins, accounts for other people, or a database.</li>
   </ul>
 
@@ -82,26 +139,27 @@ Notes from the book in [reading](../reading.md).
     <table>
       <thead><tr><th>You write</th><th>Example</th><th>In the preview</th></tr></thead>
       <tbody>
-        <tr><td>Properties</td><td><code>--- tags: [a] ---</code></td><td>A small "properties" block at the top; muted in the editor.</td></tr>
-        <tr><td>Task lists</td><td><code>- [x] done</code></td><td>Checkboxes; done items are struck through.</td></tr>
+        <tr><td>Properties</td><td><code>--- tags: [a] ---</code></td><td>A small "properties" block; searchable as <code>tags: a</code>.</td></tr>
+        <tr><td>Task lists</td><td><code>- [x] done</code></td><td>Checkboxes you can tick; done items are struck through.</td></tr>
         <tr><td>Tables</td><td><code>| a | b |</code></td><td>Scrollable tables, also on phones.</td></tr>
-        <tr><td>Links</td><td><code>[x](other.md)</code></td><td>Opens the other note in samanote; web links open in a new tab.</td></tr>
-        <tr><td>Images</td><td><code>![](img/a.png)</code></td><td>Loaded from your vault, relative to the note.</td></tr>
+        <tr><td>Links</td><td><code>[x](other.md)</code></td><td>Opens the other note; web links open in a new tab.</td></tr>
+        <tr><td>Images</td><td><code>![](img/a.png)</code></td><td>Loaded from your vault, relative to the note; tap for full screen.</td></tr>
+        <tr><td>Embeds</td><td><code>![[a.png|300]]</code></td><td>Obsidian-style image embeds, found like Obsidian finds them.</td></tr>
         <tr><td>Footnotes</td><td><code>text[^1]</code></td><td>Numbered notes at the bottom.</td></tr>
-        <tr><td>Line breaks</td><td>one Enter</td><td>Kept, like Obsidian's default.</td></tr>
+        <tr><td>Tags</td><td><code>#garden</code></td><td>Found by search as <code>#garden</code>.</td></tr>
       </tbody>
     </table>
   </div>
   <p class="muted">Raw HTML inside notes is not rendered, so a note can never run code in your browser.</p>
 
-  <h2 id="install">Install</h2>
+  <h2 id="install">Host the web app</h2>
   <p class="muted">You need a Linux box with Docker, your notes in a folder on it, and a reverse proxy that serves HTTPS
     (Caddy, Traefik, nginx, or a Cloudflare tunnel).</p>
   <ol class="steps">
     <li>
       <h3>Get the code</h3>
-      <pre>git clone https://gitlab.com/niharokz/samanote.git
-cd samanote
+      <pre>git clone https://gitlab.com/niharokz/mnemos.git
+cd mnemos
 cp .env.example .env</pre>
     </li>
     <li>
@@ -109,24 +167,24 @@ cp .env.example .env</pre>
       <p>Build the image, then create a password hash and a secret key and paste both into <code>.env</code>
         (the hash in single quotes):</p>
       <pre>docker compose build
-read -rs PW &amp;&amp; printf '%s' "$PW" | docker run --rm -i samanote:local hash-password
-openssl rand -hex 32        # → SAMANOTE_SECRET</pre>
-      <p>Also set <code>SAMANOTE_USER</code>, <code>NOTE_PATH</code> (your notes folder), <code>TZ</code>,
-        <code>PUID</code>/<code>PGID</code> (from <code>id -u</code> / <code>id -g</code>) and <code>SAMANOTE_NETWORK</code>
+read -rs PW &amp;&amp; printf '%s' "$PW" | docker run --rm -i mnemos:local hash-password
+openssl rand -hex 32        # → MNEMOS_SECRET</pre>
+      <p>Also set <code>MNEMOS_USER</code>, <code>NOTE_PATH</code> (your notes folder), <code>TZ</code>,
+        <code>PUID</code>/<code>PGID</code> (from <code>id -u</code> / <code>id -g</code>) and <code>MNEMOS_NETWORK</code>
         (the Docker network your proxy is on).</p>
     </li>
     <li>
       <h3>Check and start</h3>
-      <pre>docker compose run --rm samanote check   # settings + any note or folder it could not write
+      <pre>docker compose run --rm mnemos check   # settings + any note or folder it could not write
 docker compose up -d
-docker logs samanote                     # "samanote … listening on :8080"</pre>
+docker logs mnemos                     # "mnemos … listening on :8080"</pre>
       <p>If <code>check</code> lists folders owned by another user (often root, created by another container),
         give them back to you: <code>sudo chown -R "$(id -u):$(id -g)" /path/to/notes</code>.</p>
     </li>
     <li>
       <h3>Put it behind HTTPS</h3>
       <pre>notes.example.com {
-    reverse_proxy samanote:8080
+    reverse_proxy mnemos:8080
 }</pre>
       <p>Open the site, sign in, then use your browser's <strong>Install</strong> / <strong>Add to Home Screen</strong>.</p>
     </li>
@@ -135,8 +193,9 @@ docker logs samanote                     # "samanote … listening on :8080"</pr
       <pre>git pull &amp;&amp; docker compose up -d --build</pre>
     </li>
   </ol>
-  <p class="muted">No Docker? With Go 1.23+: <code>go build ./cmd/samanote</code>, then
-    <code>SAMANOTE_NOTES=~/notes SAMANOTE_PASSWORD=… ./samanote</code> serves <code>http://localhost:8080</code>.</p>
+  <p class="muted">No Docker? With Go 1.23+: <code>go build ./cmd/mnemos</code>, then
+    <code>MNEMOS_NOTES=~/notes MNEMOS_PASSWORD=… ./mnemos</code> serves <code>http://localhost:8080</code>.
+    Coming from Samanote? Your <code>SAMANOTE_*</code> settings keep working; rename them when convenient.</p>
 
   <h2>Configure</h2>
   <div class="two">
@@ -144,20 +203,24 @@ docker logs samanote                     # "samanote … listening on :8080"</pr
       <h3><code>.env</code> - required</h3>
       <dl>
         <dt>NOTE_PATH</dt><dd>host folder with your notes</dd>
-        <dt>SAMANOTE_USER</dt><dd>the single login</dd>
-        <dt>SAMANOTE_PASSWORD</dt><dd>a bcrypt hash from <code>samanote hash-password</code> (plain text works too)</dd>
-        <dt>SAMANOTE_SECRET</dt><dd>signs the session cookie, 32+ characters</dd>
+        <dt>MNEMOS_USER</dt><dd>your login</dd>
+        <dt>MNEMOS_PASSWORD</dt><dd>a bcrypt hash from <code>mnemos hash-password</code> (plain text works too)</dd>
+        <dt>MNEMOS_SECRET</dt><dd>signs the session cookie, 32+ characters</dd>
         <dt>PUID · PGID</dt><dd>the user that owns the notes</dd>
-        <dt>SAMANOTE_NETWORK</dt><dd>Docker network shared with your proxy</dd>
+        <dt>MNEMOS_NETWORK</dt><dd>Docker network shared with your proxy</dd>
       </dl>
     </div>
     <div class="card">
       <h3><code>.env</code> - optional</h3>
       <dl>
-        <dt>TZ</dt><dd>time zone, used in conflict-copy names</dd>
-        <dt>SAMANOTE_HIDDEN</dt><dd>extra folders to hide, comma separated (dot folders such as <code>.obsidian</code> always are)</dd>
-        <dt>SAMANOTE_AUTOSAVE_MS</dt><dd>autosave delay, default 1000</dd>
-        <dt>SAMANOTE_MAX_FILE_MB</dt><dd>bigger files open read-only, default 5</dd>
+        <dt>MNEMOS_DEMO</dt><dd><code>false</code> turns the read-only demo user off (default on)</dd>
+        <dt>MNEMOS_DEMO_USER · _PASSWORD</dt><dd>demo login shown on the sign-in card, default demouser / demo</dd>
+        <dt>MNEMOS_CAPTURE</dt><dd>note that capture appends to, default <code>inbox/note.md</code></dd>
+        <dt>MNEMOS_TEMPLATES</dt><dd>templates folder, default <code>templates</code></dd>
+        <dt>MNEMOS_HIDDEN</dt><dd>extra folders to hide, comma separated (dot folders always are)</dd>
+        <dt>MNEMOS_AUTOSAVE_MS · MAX_FILE_MB</dt><dd>autosave delay (1000) and edit size limit (5)</dd>
+        <dt>MNEMOS_MAX_UPLOAD_MB</dt><dd>largest image you can add to a note (20)</dd>
+        <dt>TZ</dt><dd>time zone, used in capture stamps and copy names</dd>
       </dl>
     </div>
   </div>
@@ -167,10 +230,12 @@ docker logs samanote                     # "samanote … listening on :8080"</pr
     <table>
       <thead><tr><th>Keys</th><th>Action</th></tr></thead>
       <tbody>
+        <tr><td><kbd>Ctrl</kbd> <kbd>K</kbd></td><td>Search everything</td></tr>
         <tr><td><kbd>Ctrl</kbd> <kbd>S</kbd></td><td>Save now</td></tr>
-        <tr><td><kbd>Ctrl</kbd> <kbd>E</kbd></td><td>Switch between editing and preview</td></tr>
+        <tr><td><kbd>Ctrl</kbd> <kbd>E</kbd></td><td>Switch between editing and preview (or table)</td></tr>
         <tr><td><kbd>Ctrl</kbd> <kbd>F</kbd></td><td>Find and replace</td></tr>
-        <tr><td><kbd>Alt</kbd> <kbd>N</kbd></td><td>New note</td></tr>
+        <tr><td><kbd>Ctrl</kbd> <kbd>B</kbd> · <kbd>I</kbd> · <kbd>K</kbd></td><td>Bold, italic, link (in the editor)</td></tr>
+        <tr><td><kbd>Alt</kbd> <kbd>N</kbd> · <kbd>C</kbd> · <kbd>R</kbd></td><td>New note, capture, recent</td></tr>
         <tr><td><kbd>Alt</kbd> <kbd>B</kbd></td><td>Show or hide the sidebar</td></tr>
       </tbody>
     </table>
@@ -179,21 +244,21 @@ docker logs samanote                     # "samanote … listening on :8080"</pr
 
   <h2>Security</h2>
   <ul class="checks">
-    <li>The password can be stored as a bcrypt hash; user name and password are compared in constant time.</li>
-    <li>HMAC-signed, HttpOnly, Secure, SameSite cookie (<code>__Host-</code> prefixed). Changing the password or the secret signs every device out.</li>
+    <li>Passwords can be stored as bcrypt hashes; every sign-in check takes the same time whether the user exists or not.</li>
+    <li>The demo user is read-only on the server, not just in the page: every change it sends is refused, and it sees only its own sample vault.</li>
+    <li>HMAC-signed, HttpOnly, Secure, SameSite cookie (<code>__Host-</code> prefixed). Changing a password or the secret signs that account out everywhere.</li>
     <li>Five wrong passwords lock that IP out for 15 minutes; the real client IP is read safely behind Cloudflare and proxies.</li>
     <li>Every change must be a same-origin JSON request with a custom header - cross-site forms and requests are refused.</li>
     <li>Paths are locked inside your notes folder: no <code>..</code>, no symlinks pointing out, hidden folders stay hidden.</li>
     <li>Strict Content-Security-Policy, HSTS, no framing, no third-party scripts, fonts or analytics. Files served raw are sandboxed.</li>
     <li>Runs as your user in an empty, read-only container with no capabilities; it can only write to your notes folder.</li>
-    <li>Every change and sign-in is logged with time and client IP - never with passwords or note contents.</li>
   </ul>
 
   <footer>
-    samanote {{VERSION}} · self-hosted, no tracking, no third-party services · MIT licence ·
-    source on <a href="https://gitlab.com/niharokz/samanote">GitLab</a>,
-    <a href="https://github.com/niharokz/samanote">GitHub</a> and
-    <a href="https://codeberg.org/niharokz/samanote">Codeberg</a>
+    Mnemos {{VERSION}} · self-hosted, no tracking, no third-party services · MIT licence ·
+    source on <a href="https://gitlab.com/niharokz/mnemos">GitLab</a>,
+    <a href="https://github.com/niharokz/mnemos">GitHub</a> and
+    <a href="https://codeberg.org/niharokz/mnemos">Codeberg</a>
   </footer>
 </main>
 </body>

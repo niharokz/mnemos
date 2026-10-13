@@ -1,7 +1,7 @@
 // Entry point for the vendored CodeMirror 6 bundle (web/static/vendor/codemirror.js).
-// Only what samanote's editor uses is re-exported, so esbuild can drop the rest.
+// Only what mnemos's editor uses is re-exported, so esbuild can drop the rest.
 // Rebuild after changing versions in package.json:  npm ci && npm run build
-export { EditorState, Compartment } from "@codemirror/state";
+export { EditorState, EditorSelection, Compartment } from "@codemirror/state";
 export {
   EditorView, keymap, drawSelection, highlightActiveLine, highlightActiveLineGutter,
   lineNumbers, placeholder, rectangularSelection, dropCursor,

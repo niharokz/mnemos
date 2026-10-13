@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Lint runs with warnings as errors; only noise about newer library versions is ignored (we pin on purpose). -->
+<lint>
+    <issue id="GradleDependency" severity="ignore" />
+    <issue id="NewerVersionAvailable" severity="ignore" />
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+    <issue id="ObsoleteLintCustomCheck" severity="ignore" />
+    <!-- All files access is the core storage decision (spec §1); Play policy does not apply to a sideloaded APK. -->
+    <issue id="ScopedStorage" severity="ignore" />
+    <issue id="QueryAllPackagesPermission" severity="ignore" />
+</lint>

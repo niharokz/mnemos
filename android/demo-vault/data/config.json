@@ -1,0 +1,8 @@
+{
+  "name": "mnemos-demo",
+  "version": 1,
+  "offline": true,
+  "folders": ["notes", "inbox", "tables"],
+  "limits": { "maxPreviewMb": 2, "editAnywayMb": 10 },
+  "owner": null
+}

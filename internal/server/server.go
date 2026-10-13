@@ -1,4 +1,4 @@
-// Package server wires samanote together: the auth endpoints, the notes API, the
+// Package server wires mnemos together: the auth endpoints, the notes API, the
 // raw-file route used by the preview, the embedded front end and security headers.
 package server
 
@@ -7,45 +7,47 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"html"
 	"io/fs"
 	"log"
 	"mime"
 	"net/http"
-	"os"
 	"path"
 	"strings"
 	"sync"
 	"time"
 
-	"gitlab.com/niharokz/samanote/internal/auth"
-	"gitlab.com/niharokz/samanote/internal/httpx"
-	"gitlab.com/niharokz/samanote/internal/render"
-	"gitlab.com/niharokz/samanote/internal/vault"
-	"gitlab.com/niharokz/samanote/web"
+	"gitlab.com/niharokz/mnemos/internal/auth"
+	"gitlab.com/niharokz/mnemos/internal/httpx"
+	"gitlab.com/niharokz/mnemos/internal/search"
+	"gitlab.com/niharokz/mnemos/internal/vault"
+	"gitlab.com/niharokz/mnemos/web"
 )
 
-// Options are the settings the browser needs.
+// Options are the settings of the app.
 type Options struct {
-	Version    string
-	AutosaveMS int
+	Version      string
+	AutosaveMS   int
+	CaptureNote  string // vault path quick capture appends to
+	TemplatesDir string // vault folder listed by "New from template"
+	MaxUploadMB  int    // largest image that can be added to a note
 }
 
 // Limits for the http.Server.
 const (
 	ReadHeaderTimeout = 10 * time.Second
-	ReadTimeout       = 30 * time.Second
+	ReadTimeout       = 2 * time.Minute // room for a phone photo on a slow link
 	WriteTimeout      = 60 * time.Second
 	IdleTimeout       = 120 * time.Second
 	MaxHeaderBytes    = 64 << 10
 )
 
-// New returns the HTTP handler.
-func New(a *auth.Auth, v *vault.Vault, opt Options) http.Handler {
+// New returns the HTTP handler. Each signed-in user brings their own vault
+// (the owner's notes, or the demo vault), so every API call works on that one.
+func New(a *auth.Auth, opt Options) http.Handler {
 	mux := http.NewServeMux()
-	rt := &httpx.Router{Mux: mux, SignedIn: a.SignedIn}
-	api := &api{v: v, opt: opt}
+	rt := &httpx.Router{Mux: mux, Resolve: a.Resolve}
+	api := &api{opt: opt, indexes: map[*vault.Vault]*search.Index{}}
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	a.Register(mux)
@@ -54,11 +56,20 @@ func New(a *auth.Auth, v *vault.Vault, opt Options) http.Handler {
 	rt.Handle("GET /api/tree", api.tree)
 	rt.Handle("GET /api/file", api.read)
 	rt.Handle("GET /api/version", api.version)
+	rt.Handle("GET /api/folder", api.folder)
+	rt.Handle("GET /api/search", api.search)
+	rt.Handle("GET /api/templates", api.templates)
+	rt.Handle("GET /api/trash", api.trashList)
+	rt.Handle("GET /api/conflicts", api.conflicts)
 	rt.Handle("PUT /api/file", api.write)
 	rt.Handle("POST /api/new", api.create)
 	rt.Handle("POST /api/move", api.move)
 	rt.Handle("POST /api/trash", api.trash)
-	rt.Handle("POST /api/render", api.render)
+	rt.Handle("POST /api/restore", api.restore)
+	rt.Handle("POST /api/capture", api.capture)
+	rt.Handle("POST /api/attach", api.attach)
+	rt.Handle("POST /api/conflicts/resolve", api.resolve)
+	rt.HandleSafe("POST /api/render", api.render)
 	rt.Handle("GET /raw/{path...}", api.raw)
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusNotFound, "no such API endpoint")
@@ -111,180 +122,6 @@ func (s *statusWriter) WriteHeader(code int) {
 	s.ResponseWriter.WriteHeader(code)
 }
 
-// ---- notes API ---------------------------------------------------------------
-
-type api struct {
-	v   *vault.Vault
-	opt Options
-}
-
-func (a *api) config(w http.ResponseWriter, r *http.Request) error {
-	httpx.JSON(w, http.StatusOK, map[string]any{
-		"version": a.opt.Version, "autosave_ms": a.opt.AutosaveMS, "max_bytes": a.v.MaxBytes(),
-	})
-	return nil
-}
-
-func (a *api) tree(w http.ResponseWriter, r *http.Request) error {
-	t, err := a.v.Tree()
-	if err != nil {
-		return err
-	}
-	httpx.JSON(w, http.StatusOK, t)
-	return nil
-}
-
-func (a *api) read(w http.ResponseWriter, r *http.Request) error {
-	f, err := a.v.Read(r.URL.Query().Get("path"))
-	if err != nil {
-		return vaultErr(err)
-	}
-	httpx.JSON(w, http.StatusOK, f)
-	return nil
-}
-
-// version is the cheap "did it change?" check the browser runs on focus.
-func (a *api) version(w http.ResponseWriter, r *http.Request) error {
-	ver, err := a.v.Stat(r.URL.Query().Get("path"))
-	if err != nil {
-		return vaultErr(err)
-	}
-	httpx.JSON(w, http.StatusOK, map[string]string{"version": ver})
-	return nil
-}
-
-func (a *api) write(w http.ResponseWriter, r *http.Request) error {
-	var in struct {
-		Content string `json:"content"`
-		Version string `json:"version"`
-		Force   bool   `json:"force"`
-	}
-	if err := httpx.Decode(w, r, a.v.MaxBytes()*2+64<<10, &in); err != nil {
-		return err
-	}
-	ver, err := a.v.Write(r.URL.Query().Get("path"), in.Content, in.Version, in.Force)
-	if err != nil {
-		return vaultErr(err)
-	}
-	httpx.JSON(w, http.StatusOK, map[string]string{"version": ver})
-	return nil
-}
-
-func (a *api) create(w http.ResponseWriter, r *http.Request) error {
-	var in struct {
-		Path   string `json:"path"`
-		Folder bool   `json:"folder"`
-	}
-	if err := httpx.Decode(w, r, 16<<10, &in); err != nil {
-		return err
-	}
-	p, err := a.v.Create(in.Path, in.Folder)
-	if err != nil {
-		return vaultErr(err)
-	}
-	httpx.JSON(w, http.StatusOK, map[string]string{"path": p})
-	return nil
-}
-
-func (a *api) move(w http.ResponseWriter, r *http.Request) error {
-	var in struct{ From, To string }
-	if err := httpx.Decode(w, r, 16<<10, &in); err != nil {
-		return err
-	}
-	p, err := a.v.Move(in.From, in.To)
-	if err != nil {
-		return vaultErr(err)
-	}
-	httpx.JSON(w, http.StatusOK, map[string]string{"path": p})
-	return nil
-}
-
-func (a *api) trash(w http.ResponseWriter, r *http.Request) error {
-	var in struct{ Path string }
-	if err := httpx.Decode(w, r, 16<<10, &in); err != nil {
-		return err
-	}
-	p, err := a.v.Trash(in.Path)
-	if err != nil {
-		return vaultErr(err)
-	}
-	httpx.JSON(w, http.StatusOK, map[string]string{"trash": p})
-	return nil
-}
-
-func (a *api) render(w http.ResponseWriter, r *http.Request) error {
-	var in struct{ Path, Content string }
-	if err := httpx.Decode(w, r, a.v.MaxBytes()*2+64<<10, &in); err != nil {
-		return err
-	}
-	out, err := render.Render(in.Path, in.Content)
-	if err != nil {
-		return err
-	}
-	httpx.JSON(w, http.StatusOK, map[string]string{"html": out})
-	return nil
-}
-
-// raw serves a vault file as-is for the preview (images) and "open raw". Anything
-// that a browser could run (HTML, SVG, JS) is sandboxed by its own CSP, and HTML
-// and scripts are sent as plain text.
-func (a *api) raw(w http.ResponseWriter, r *http.Request) error {
-	abs, err := a.v.RawPath(r.PathValue("path"))
-	if err != nil {
-		return vaultErr(err)
-	}
-	f, err := os.Open(abs)
-	if err != nil {
-		return vaultErr(vault.ErrNotFound)
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return err
-	}
-	ext := strings.ToLower(path.Ext(abs))
-	ct := mime.TypeByExtension(ext)
-	switch {
-	case ext == ".html" || ext == ".htm" || ext == ".js" || ext == ".mjs" || ext == ".xhtml" || ext == ".xml":
-		ct = "text/plain; charset=utf-8"
-	case ct == "" || strings.HasPrefix(ct, "text/"):
-		ct = "text/plain; charset=utf-8"
-	}
-	h := w.Header()
-	h.Set("Content-Type", ct)
-	h.Set("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; media-src 'self'")
-	h.Set("Cache-Control", "private, no-cache")
-	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
-	return nil
-}
-
-// vaultErr maps vault errors to HTTP statuses and clear messages.
-func vaultErr(err error) error {
-	var ce *vault.ConflictError
-	switch {
-	case errors.As(err, &ce):
-		return &httpx.StatusError{Code: http.StatusConflict, Msg: ce.Error(), Body: map[string]any{
-			"conflict": true, "current": ce.Current, "version": ce.Version, "deleted": ce.Deleted,
-		}}
-	}
-	var pe *vault.PermissionError
-	switch {
-	case errors.As(err, &pe):
-		return httpx.Errorf(http.StatusForbidden, "%s", pe.Error())
-	case errors.Is(err, vault.ErrNotFound):
-		return httpx.Errorf(http.StatusNotFound, "%s", "not found — it may have been moved or deleted")
-	case errors.Is(err, vault.ErrExists):
-		return httpx.Errorf(http.StatusConflict, "%s", err.Error())
-	case errors.Is(err, vault.ErrHidden):
-		return httpx.Errorf(http.StatusForbidden, "%s", err.Error())
-	case errors.Is(err, vault.ErrTooLarge):
-		return httpx.Errorf(http.StatusRequestEntityTooLarge, "%s", err.Error())
-	case errors.Is(err, vault.ErrBadPath), errors.Is(err, vault.ErrIsDir):
-		return httpx.Errorf(http.StatusBadRequest, "%s", err.Error())
-	}
-	return err
-}
-
 // ---- embedded front end -----------------------------------------------------
 
 // assets serves the embedded files with an ETag and a gzip copy made once.
@@ -324,6 +161,8 @@ func (s *assets) get(name string) (*asset, error) {
 		a.ct = "application/manifest+json"
 	case ".js":
 		a.ct = "text/javascript; charset=utf-8"
+	case ".ico": // not in Go's built-in table, and the scratch image has no mime.types
+		a.ct = "image/x-icon"
 	}
 	if a.ct == "" {
 		a.ct = "application/octet-stream"

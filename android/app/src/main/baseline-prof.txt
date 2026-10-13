@@ -1,0 +1,8 @@
+# Starter Baseline Profile (hand-written). Regenerate on a device with `./build.sh profile`,
+# which runs :benchmark's BaselineProfileGenerator and replaces this with measured rules.
+HSPLcom/nihars/mnemos/app/**->**(**)**
+HSPLcom/nihars/mnemos/core/**->**(**)**
+HSPLcom/nihars/mnemos/feature/signin/**->**(**)**
+HSPLcom/nihars/mnemos/feature/tree/**->**(**)**
+HSPLcom/nihars/mnemos/feature/editor/**->**(**)**
+Lcom/nihars/mnemos/**;

@@ -1,0 +1,13 @@
+.gradle/
+build/
+dist/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.kotlin/
+# Signing secrets never enter the repo.
+keystore.env
+*.jks
+*.keystore

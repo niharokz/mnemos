@@ -1,4 +1,4 @@
-module gitlab.com/niharokz/samanote
+module gitlab.com/niharokz/mnemos
 
 go 1.23
 

@@ -7,11 +7,21 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gitlab.com/niharokz/mnemos/internal/httpx"
 )
 
+// one makes an Auth with a single owner account.
+func one(user, pw, secret string) (*Auth, *Account) {
+	ac := &Account{User: httpx.User{Name: user}, Password: pw}
+	return New(secret, ac), ac
+}
+
+func (a *Auth) Valid(tok string) bool { return a.Parse(tok) != nil }
+
 func TestTokenRoundTripAndTamper(t *testing.T) {
-	a := New("Nihar", "pw", "secret")
-	tok := a.Token(time.Now().Add(time.Hour))
+	a, ac := one("Nihar", "pw", "secret")
+	tok := a.Token(ac, time.Now().Add(time.Hour))
 	if !a.Valid(tok) {
 		t.Fatal("fresh token rejected")
 	}
@@ -23,23 +33,23 @@ func TestTokenRoundTripAndTamper(t *testing.T) {
 	if a.Valid(forged) {
 		t.Fatal("tampered token accepted")
 	}
-	if New("nihar", "pw", "other").Valid(tok) {
+	if b, _ := one("nihar", "pw", "other"); b.Valid(tok) {
 		t.Fatal("token valid under another secret")
 	}
-	if a.Valid(a.Token(time.Now().Add(-time.Minute))) {
+	if a.Valid(a.Token(ac, time.Now().Add(-time.Minute))) {
 		t.Fatal("expired token accepted")
 	}
 }
 
 func TestCheckPlainAndHash(t *testing.T) {
-	if a := New("me", "plain-pass", ""); !a.Check("ME ", "plain-pass") || a.Check("me", "nope") || a.Check("you", "plain-pass") {
+	if a, _ := one("me", "plain-pass", ""); a.Check("ME ", "plain-pass") == nil || a.Check("me", "nope") != nil || a.Check("you", "plain-pass") != nil {
 		t.Fatal("plain password check")
 	}
 	h, err := HashPassword("hashed-pass")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a := New("me", h, ""); !a.Check("me", "hashed-pass") || a.Check("me", h) {
+	if a, _ := one("me", h, ""); a.Check("me", "hashed-pass") == nil || a.Check("me", h) != nil {
 		t.Fatal("bcrypt check")
 	}
 }
@@ -47,7 +57,7 @@ func TestCheckPlainAndHash(t *testing.T) {
 func login(a *Auth, mux *http.ServeMux, body string, header bool) *httptest.ResponseRecorder {
 	r := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
 	if header {
-		r.Header.Set("X-Samanote", "1")
+		r.Header.Set("X-Mnemos", "1")
 	}
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
@@ -55,7 +65,7 @@ func login(a *Auth, mux *http.ServeMux, body string, header bool) *httptest.Resp
 }
 
 func TestLoginFlowAndRateLimit(t *testing.T) {
-	a := New("me", "right", "s")
+	a, _ := one("me", "right", "s")
 	mux := http.NewServeMux()
 	a.Register(mux)
 	if w := login(a, mux, `{"user":"me","password":"right"}`, false); w.Code != http.StatusForbidden {
@@ -80,21 +90,22 @@ func TestLoginFlowAndRateLimit(t *testing.T) {
 }
 
 func TestPasswordChangeSignsOut(t *testing.T) {
-	tok := New("me", "old-password", "secret").Token(time.Now().Add(time.Hour))
-	if New("me", "new-password", "secret").Valid(tok) {
+	old, ac := one("me", "old-password", "secret")
+	tok := old.Token(ac, time.Now().Add(time.Hour))
+	if b, _ := one("me", "new-password", "secret"); b.Valid(tok) {
 		t.Fatal("session survived a password change")
 	}
-	if !New("me", "old-password", "secret").Valid(tok) {
+	if b, _ := one("me", "old-password", "secret"); !b.Valid(tok) {
 		t.Fatal("same settings must keep the session")
 	}
 }
 
 func TestSecureCookieAndCrossSite(t *testing.T) {
-	a := New("me", "right", "s")
+	a, _ := one("me", "right", "s")
 	mux := http.NewServeMux()
 	a.Register(mux)
 	r := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"user":"me","password":"right"}`))
-	r.Header.Set("X-Samanote", "1")
+	r.Header.Set("X-Mnemos", "1")
 	r.Header.Set("X-Forwarded-Proto", "https")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
@@ -104,12 +115,12 @@ func TestSecureCookieAndCrossSite(t *testing.T) {
 	}
 	r = httptest.NewRequest("GET", "/", nil)
 	r.AddCookie(&http.Cookie{Name: SecureCookieName, Value: c.Value})
-	if !a.SignedIn(r) {
+	if a.Resolve(r) == nil {
 		t.Fatal("__Host- cookie not accepted")
 	}
 	// a page on another site posting the login form
 	r = httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"user":"me","password":"right"}`))
-	r.Header.Set("X-Samanote", "1")
+	r.Header.Set("X-Mnemos", "1")
 	r.Header.Set("Origin", "https://evil.example")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
@@ -136,5 +147,30 @@ func TestClientIP(t *testing.T) {
 		if got := ClientIP(r); got != c.want {
 			t.Errorf("%v → %s, want %s", c.h, got, c.want)
 		}
+	}
+}
+
+func TestTwoUsersAndDemoHint(t *testing.T) {
+	owner := &Account{User: httpx.User{Name: "me"}, Password: "owner-pass"}
+	demo := &Account{User: httpx.User{Name: "demouser", ReadOnly: true}, Password: "demo", ShowHint: true}
+	a := New("s", owner, demo)
+	if ac := a.Check("demouser", "demo"); ac == nil || !ac.User.ReadOnly {
+		t.Fatal("demo login")
+	}
+	if a.Check("demouser", "owner-pass") != nil || a.Check("me", "demo") != nil {
+		t.Fatal("passwords crossed between users")
+	}
+	tok := a.Token(demo, time.Now().Add(time.Hour))
+	if ac := a.Parse(tok); ac == nil || ac.User.Name != "demouser" {
+		t.Fatal("demo token")
+	}
+	// a demo token re-labelled as the owner must fail: each user has its own key
+	raw, _ := base64.RawURLEncoding.DecodeString(tok)
+	forged := base64.RawURLEncoding.EncodeToString([]byte(strings.Replace(string(raw), "demouser|", "me|", 1)))
+	if a.Parse(forged) != nil {
+		t.Fatal("demo token accepted as owner")
+	}
+	if u, p, ok := a.DemoHint(); !ok || u != "demouser" || p != "demo" {
+		t.Fatal("demo hint")
 	}
 }

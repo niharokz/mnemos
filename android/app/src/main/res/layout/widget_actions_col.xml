@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quick actions, 1x2: New note above Quick capture. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="4dp">
+    <LinearLayout
+        android:id="@+id/act_new"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_margin="4dp"
+        android:layout_weight="1"
+        android:background="@drawable/widget_button_bg"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="6dp">
+        <ImageView
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:contentDescription="@string/widget_act_new"
+            android:src="@drawable/ic_shortcut_new" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="@string/widget_act_new"
+            android:textColor="@color/nss_text"
+            android:textSize="12sp" />
+    </LinearLayout>
+    <LinearLayout
+        android:id="@+id/act_capture"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_margin="4dp"
+        android:layout_weight="1"
+        android:background="@drawable/widget_button_bg"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="6dp">
+        <ImageView
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:contentDescription="@string/widget_act_capture"
+            android:src="@drawable/ic_capture" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="@string/widget_act_capture"
+            android:textColor="@color/nss_text"
+            android:textSize="12sp" />
+    </LinearLayout>
+</LinearLayout>

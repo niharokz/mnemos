@@ -149,7 +149,7 @@ func TestWriteKeepsModeAndLeavesNoTemp(t *testing.T) {
 	}
 	ents, _ := os.ReadDir(dir)
 	for _, e := range ents {
-		if strings.HasPrefix(e.Name(), ".samanote-") {
+		if strings.HasPrefix(e.Name(), ".mnemos-") {
 			t.Fatalf("temp file left behind: %s", e.Name())
 		}
 	}

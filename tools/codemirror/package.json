@@ -1,7 +1,7 @@
 {
-  "name": "samanote-codemirror-bundle",
+  "name": "mnemos-codemirror-bundle",
   "private": true,
-  "description": "Builds web/static/vendor/codemirror.js — the only third-party JS in samanote. Run: npm ci && npm run build",
+  "description": "Builds web/static/vendor/codemirror.js — the only third-party JS in mnemos. Run: npm ci && npm run build",
   "scripts": {
     "build": "esbuild entry.js --bundle --format=esm --minify --legal-comments=eof --target=es2020 --alias:@codemirror/lang-html=./stub-html.js --outfile=../../web/static/vendor/codemirror.js"
   },

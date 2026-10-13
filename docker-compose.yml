@@ -1,37 +1,41 @@
-# samanote — markdown notes with live preview, on your notes folder.
+# Mnemos — your notes folder on the web: markdown, CSV tables, search, conflicts.
 # Every personal value (paths, user id, network, login) comes from .env.
 services:
-  samanote:
-    build:
-      context: .
-      args:
-        VERSION: 2.1.0
-    image: samanote:local
-    container_name: samanote
+  mnemos:
+    build: .
+    image: mnemos:local
+    container_name: mnemos
     restart: unless-stopped
     init: true
     user: "${PUID:-1000}:${PGID:-1000}"      # write notes as your user, not root
     # Only these variables reach the container, so a shared .env is safe.
+    # Each MNEMOS_X falls back to the old SAMANOTE_X, so a Samanote .env keeps working.
     environment:
       TZ: ${TZ:-UTC}
-      SAMANOTE_USER: ${SAMANOTE_USER:?set SAMANOTE_USER in .env}
-      SAMANOTE_PASSWORD: ${SAMANOTE_PASSWORD:?set SAMANOTE_PASSWORD in .env}
-      SAMANOTE_SECRET: ${SAMANOTE_SECRET:-}
-      SAMANOTE_HIDDEN: ${SAMANOTE_HIDDEN:-}
-      SAMANOTE_AUTOSAVE_MS: ${SAMANOTE_AUTOSAVE_MS:-1000}
-      SAMANOTE_MAX_FILE_MB: ${SAMANOTE_MAX_FILE_MB:-5}
+      MNEMOS_USER: ${MNEMOS_USER:-${SAMANOTE_USER:?set MNEMOS_USER in .env}}
+      MNEMOS_PASSWORD: ${MNEMOS_PASSWORD:-${SAMANOTE_PASSWORD:?set MNEMOS_PASSWORD in .env}}
+      MNEMOS_SECRET: ${MNEMOS_SECRET:-${SAMANOTE_SECRET:-}}
+      MNEMOS_HIDDEN: ${MNEMOS_HIDDEN:-${SAMANOTE_HIDDEN:-}}
+      MNEMOS_AUTOSAVE_MS: ${MNEMOS_AUTOSAVE_MS:-${SAMANOTE_AUTOSAVE_MS:-1000}}
+      MNEMOS_MAX_FILE_MB: ${MNEMOS_MAX_FILE_MB:-${SAMANOTE_MAX_FILE_MB:-5}}
+      MNEMOS_MAX_UPLOAD_MB: ${MNEMOS_MAX_UPLOAD_MB:-20}
+      MNEMOS_CAPTURE: ${MNEMOS_CAPTURE:-inbox/note.md}
+      MNEMOS_TEMPLATES: ${MNEMOS_TEMPLATES:-templates}
+      MNEMOS_DEMO: ${MNEMOS_DEMO:-true}
+      MNEMOS_DEMO_USER: ${MNEMOS_DEMO_USER:-demouser}
+      MNEMOS_DEMO_PASSWORD: ${MNEMOS_DEMO_PASSWORD:-demo}
     volumes:
       - ${NOTE_PATH:?set NOTE_PATH in .env}:/notes
     read_only: true
     tmpfs:
-      - /tmp
+      - /tmp:size=32m   # the demo user's sample vault is unpacked here at start
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
     networks:
       - proxy
-    # No published port: your reverse proxy reaches samanote:8080 on the shared network.
+    # No published port: your reverse proxy reaches mnemos:8080 on the shared network.
     # For a quick local test instead, add:  ports: ["127.0.0.1:8080:8080"]
     stop_grace_period: 20s
     logging:
@@ -42,5 +46,5 @@ services:
 
 networks:
   proxy:
-    name: ${SAMANOTE_NETWORK:-homelab}
+    name: ${MNEMOS_NETWORK:-${SAMANOTE_NETWORK:-homelab}}
     external: true

@@ -1,0 +1,28 @@
+Mnemos — open-source notices
+==============================
+
+Mnemos is MIT licensed. It is built with the following open-source software:
+
+AndroidX (core, activity, fragment, lifecycle, navigation, biometric, datastore, profileinstaller)
+  Copyright The Android Open Source Project — Apache License 2.0
+
+Jetpack Compose (runtime, ui, foundation, animation, material3)
+  Copyright The Android Open Source Project — Apache License 2.0
+
+Kotlin standard library and kotlinx.coroutines
+  Copyright JetBrains s.r.o. and contributors — Apache License 2.0
+
+commonmark-java and extensions (gfm-tables, gfm-strikethrough, task-list-items, autolink, footnotes)
+  Copyright Atlassian Pty Ltd / commonmark-java contributors — BSD 2-Clause License
+
+autolink-java
+  Copyright Robin Stocker — MIT License
+
+JetBrains Mono (font)
+  Copyright The JetBrains Mono Project Authors — SIL Open Font License 1.1
+
+Full licence texts:
+  Apache 2.0  https://www.apache.org/licenses/LICENSE-2.0
+  BSD 2-Clause https://opensource.org/licenses/BSD-2-Clause
+  MIT         https://opensource.org/licenses/MIT
+  OFL 1.1     https://openfontlicense.org

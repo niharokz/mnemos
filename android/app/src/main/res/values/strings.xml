@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Mnemos</string>
+    <string name="capture_label">Quick capture</string>
+    <string name="share_label">Save to Mnemos</string>
+    <string name="widget_capture">Quick capture</string>
+    <string name="widget_pinned">Pinned notes</string>
+    <string name="widget_preview">Note preview</string>
+    <string name="widget_capture_desc">Jot a line into your capture note</string>
+    <string name="widget_pinned_desc">Your pinned notes, one tap away</string>
+    <string name="widget_preview_desc">The first lines of a note you choose</string>
+    <string name="shortcut_new_note">New note</string>
+    <string name="shortcut_capture">Quick capture</string>
+    <string name="shortcut_search">Search</string>
+    <string name="shortcut_lock">Lock now</string>
+    <string name="widget_locked">Locked</string>
+    <string name="widget_new">New note</string>
+    <string name="widget_new_desc">Start a note in your default folder</string>
+    <string name="widget_open">Open note</string>
+    <string name="widget_open_desc">A shortcut to one note you choose</string>
+    <string name="widget_actions">Quick actions</string>
+    <string name="widget_actions_desc">New note, capture, search and your last note</string>
+    <string name="widget_recent">Recent notes</string>
+    <string name="widget_recent_desc">Notes you opened or changed lately</string>
+    <string name="widget_recent_header" translatable="false">Recent</string>
+    <string name="widget_no_recent">Nothing opened yet</string>
+    <string name="widget_act_new">New note</string>
+    <string name="widget_act_capture">Capture</string>
+    <string name="widget_act_search">Search</string>
+    <string name="widget_act_last">Last note</string>
+    <string name="widget_no_pins">No pinned notes yet</string>
+    <string name="widget_pinned_header" translatable="false">~/pinned</string>
+    <string name="widget_setup">Open Mnemos to set up</string>
+</resources>

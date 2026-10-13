@@ -6,14 +6,15 @@
   <meta name="theme-color" content="#3a807a">
   <meta name="color-scheme" content="dark light">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="description" content="samanote — markdown notes with live preview">
+  <meta name="description" content="Mnemos — your notes folder in the browser: markdown, CSV tables, search, sync conflicts">
   <meta name="robots" content="noindex, nofollow">
-  <title>samanote</title>
+  <title>Mnemos</title>
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="icon" href="/favicon.ico?v={{VERSION}}" sizes="48x48">
+  <link rel="icon" href="/icon.svg?v={{VERSION}}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-192.png?v={{VERSION}}">
   <link rel="stylesheet" href="/css/nss-app.css">
-  <link rel="stylesheet" href="/css/samanote.css">
+  <link rel="stylesheet" href="/css/mnemos.css">
   <script type="module" src="/js/main.js"></script>
 </head>
 <body>
@@ -34,17 +35,31 @@
     <symbol id="i-raw" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.4v.1"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 13l2.5-7.5h11L20 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M4 13h4.5l1.5 2.5h4l1.5-2.5H20"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 3.5h6l-1 5 3.5 3.5v1.5h-11V12L10 8.5z"/><path d="M12 13.5V21"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14"/></symbol>
+    <symbol id="i-follow" viewBox="0 0 24 24"><path d="M12 4v13m-5-5 5 5 5-5M6 20.5h12"/></symbol>
+    <symbol id="i-template" viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
   </svg>
 
   <!-- sign in -->
   <div id="login" class="center" hidden>
     <form class="card" id="login-form" autocomplete="on">
-      <div class="brand">samanote</div>
+      <div class="brand">mnemos</div>
       <label class="f"><span>User</span><input name="user" autocomplete="username" autocapitalize="none" required></label>
       <label class="f"><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
       <button class="primary block" type="submit">Sign in</button>
       <p class="err" id="login-err" role="alert"></p>
-      <p class="about-link"><a href="/">What is samanote?</a></p>
+      <div class="demo-box" id="demo-box" hidden>
+        <p>Just looking? Open the sample vault — read-only, nothing is saved.</p>
+        <button type="button" class="block" id="demo-btn">Try the demo</button>
+        <small>user <code id="demo-user"></code> · password <code id="demo-pw"></code></small>
+      </div>
+      <p class="about-link"><a href="/">What is Mnemos?</a></p>
     </form>
   </div>
 
@@ -52,12 +67,22 @@
   <div id="app" class="app" hidden>
     <aside class="side" id="side" aria-label="Notes">
       <div class="side-h">
-        <span class="brand">samanote</span>
-        <button class="ghost icon" id="new-note" title="New note (Alt+N)" aria-label="New note"><svg class="i"><use href="#i-note-plus"/></svg></button>
-        <button class="ghost icon" id="new-folder" title="New folder" aria-label="New folder"><svg class="i"><use href="#i-folder-plus"/></svg></button>
+        <span class="brand">mnemos</span>
+        <button class="ghost icon rw-only" id="new-note" title="New note (Alt+N)" aria-label="New note"><svg class="i"><use href="#i-note-plus"/></svg></button>
+        <button class="ghost icon rw-only" id="new-folder" title="New folder" aria-label="New folder"><svg class="i"><use href="#i-folder-plus"/></svg></button>
         <button class="ghost icon" id="collapse-btn" title="Hide sidebar (Alt+B)" aria-label="Hide sidebar"><svg class="i"><use href="#i-panel"/></svg></button>
       </div>
-      <div class="filter"><input type="search" id="filter" placeholder="Filter notes…" aria-label="Filter notes" autocomplete="off" spellcheck="false"></div>
+      <nav class="side-nav" aria-label="Tools">
+        <button class="ghost" id="nav-search" title="Search everything (Ctrl+K)"><svg class="i"><use href="#i-search"/></svg><span>Search</span></button>
+        <button class="ghost" id="nav-recent" title="Recent files (Alt+R)"><svg class="i"><use href="#i-clock"/></svg><span>Recent</span></button>
+        <button class="ghost" id="nav-cards" title="Folder as cards"><svg class="i"><use href="#i-folder"/></svg><span>Cards</span></button>
+        <button class="ghost" id="nav-capture" title="Quick capture (Alt+C)"><svg class="i"><use href="#i-inbox"/></svg><span>Capture</span></button>
+        <button class="ghost rw-only" id="nav-template" title="New note from a template"><svg class="i"><use href="#i-template"/></svg><span>Template</span></button>
+        <button class="ghost" id="nav-conflicts" title="Syncthing conflicts"><svg class="i"><use href="#i-alert"/></svg><span>Conflicts</span><span class="badge bad" id="cf-count" hidden></span></button>
+        <button class="ghost" id="nav-trash" title="Trash"><svg class="i"><use href="#i-trash"/></svg><span>Trash</span></button>
+      </nav>
+      <div class="filter"><input type="search" id="filter" placeholder="Filter files…" aria-label="Filter files" autocomplete="off" spellcheck="false"></div>
+      <div class="pins tree" id="pins"></div>
       <nav class="tree" id="tree"></nav>
       <div class="side-foot">
         <small id="ver"></small>
@@ -69,6 +94,7 @@
     <div class="scrim" id="scrim" hidden></div>
 
     <main class="main">
+      <div class="demo-bar" id="demo-bar" hidden>Demo vault · read-only — edit anything, nothing is saved. <a href="/">About Mnemos</a></div>
       <header class="top">
         <button class="ghost icon" id="menu-btn" aria-label="Show notes"><svg class="i"><use href="#i-menu"/></svg></button>
         <div class="crumb" id="crumb"><span class="dir"></span><span class="name"></span></div>
@@ -91,16 +117,23 @@
       <div class="panes" id="panes" hidden>
         <section class="pane pane-edit" id="editor" aria-label="Editor"></section>
         <div class="split-resizer" id="split-resizer" role="separator" aria-orientation="vertical" aria-label="Resize panes"></div>
-        <section class="pane pane-preview" id="preview-pane" aria-label="Preview"><article class="prose" id="preview"></article></section>
+        <section class="pane pane-preview" id="preview-pane" aria-label="Preview"><article class="prose" id="preview"></article><div class="tablev" id="table" hidden></div></section>
       </div>
+
+      <section class="folder" id="folder" aria-label="Folder" hidden></section>
+      <section class="diffv" id="diff" aria-label="Sync conflict" hidden></section>
 
       <div class="welcome" id="welcome" hidden>
         <div>
           <h1>Your <em>notes</em>.</h1>
-          <p>Pick a note from the list, or start a new one.</p>
-          <button class="primary" id="welcome-new">New note</button>
+          <p>Pick a file from the list, search everything, or start a new note.</p>
+          <div class="w-acts">
+            <button class="primary rw-only" id="welcome-new">New note</button>
+            <button id="welcome-search">Search</button>
+            <button id="welcome-cards">Browse as cards</button>
+          </div>
           <div id="recent"></div>
-          <p class="keys"><kbd>Ctrl</kbd> <kbd>S</kbd> save · <kbd>Ctrl</kbd> <kbd>E</kbd> edit / preview · <kbd>Ctrl</kbd> <kbd>F</kbd> find · <kbd>Alt</kbd> <kbd>N</kbd> new note · <kbd>Alt</kbd> <kbd>B</kbd> sidebar</p>
+          <p class="keys"><kbd>Ctrl</kbd> <kbd>K</kbd> search · <kbd>Ctrl</kbd> <kbd>S</kbd> save · <kbd>Ctrl</kbd> <kbd>E</kbd> edit / preview · <kbd>Ctrl</kbd> <kbd>F</kbd> find · <kbd>Alt</kbd> <kbd>N</kbd> new note · <kbd>Alt</kbd> <kbd>C</kbd> capture · <kbd>Alt</kbd> <kbd>R</kbd> recent · <kbd>Alt</kbd> <kbd>B</kbd> sidebar</p>
         </div>
       </div>
     </main>
@@ -108,6 +141,6 @@
 
   <dialog class="sheet" id="sheet"></dialog>
   <div class="toast" id="toast" role="status" hidden></div>
-  <noscript><p class="center">samanote needs JavaScript.</p></noscript>
+  <noscript><p class="center">Mnemos needs JavaScript.</p></noscript>
 </body>
 </html>

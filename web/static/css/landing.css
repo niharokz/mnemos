@@ -72,7 +72,7 @@ body>.about{max-width:62rem;padding:1.25rem 1rem 4rem}
 .steps>li,.two>*,.feat>*{min-width:0}
 .about pre{max-width:100%}
 @media (max-width:440px){.two dl{grid-template-columns:minmax(0,1fr)}.two dd{margin-bottom:.45rem}}
-/* samanote extras */
+/* mnemos extras */
 .about kbd{font:.78rem var(--nss-mono);padding:.05em .45em;border:1px solid var(--nss-line);border-bottom-width:2px;border-radius:5px;background:var(--nss-surface)}
 .shot{margin:2rem 0 0;border:1px solid var(--nss-line);border-radius:var(--nss-radius);overflow:hidden;background:var(--nss-surface)}
 .shot .bar{display:flex;gap:.4rem;align-items:center;padding:.55rem .8rem;border-bottom:1px solid var(--nss-line);font:.78rem var(--nss-mono);color:var(--nss-muted)}
@@ -89,3 +89,39 @@ body>.about{max-width:62rem;padding:1.25rem 1rem 4rem}
 .not{display:grid;gap:.4rem;padding:0;list-style:none}
 .not li{margin:0;padding-left:1.6rem;position:relative;color:var(--nss-muted)}
 .not li::before{content:"–";position:absolute;left:.3rem;color:var(--nss-muted)}
+/* brand: the nss "~/name_" logo */
+.about .brand span::before{content:"~/";color:var(--nss-muted);font-weight:500}
+.about .brand span::after{content:"_";color:var(--nss-accent);animation:blink 1.2s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+@media (max-width:520px){.hide-sm{display:none}}
+.shot .out .props{font:.74rem var(--nss-mono);color:var(--nss-muted);border:1px dashed var(--nss-line);border-radius:8px;padding:.35rem .6rem}
+.shot .out ul.tasks{list-style:none;padding-left:0}
+.shot .out ul.tasks li::before{content:"☐ ";color:var(--nss-accent)}
+.shot .out ul.tasks li.done::before{content:"☑ "}
+
+/* Android section */
+.android{margin-top:3rem;padding:1.4rem 1.2rem;border:1px solid color-mix(in srgb,var(--nss-accent) 45%,var(--nss-line));border-radius:calc(var(--nss-radius) + 6px);
+  background:radial-gradient(40rem 20rem at 100% 0,var(--nss-glow),transparent 70%),var(--nss-surface)}
+.android h2{margin:.2rem 0 .7rem;font-size:clamp(1.4rem,4.4vw,2rem);line-height:1.15;letter-spacing:-.02em}
+.android h2 em{font-style:normal;color:var(--nss-ink)}
+.android .kicker{margin:0;font:700 .72rem var(--nss-mono);text-transform:uppercase;letter-spacing:.16em;color:var(--nss-ink)}
+.a-head{display:grid;gap:1.5rem;grid-template-columns:minmax(0,1fr);align-items:center}
+@media (min-width:820px){.a-head{grid-template-columns:minmax(0,1fr) 15rem}}
+.a-head p{color:var(--nss-muted)}
+.phone{position:relative;justify-self:center;width:14rem;height:24rem;padding:1rem .8rem;border-radius:2rem;background:var(--nss-bg);
+  border:6px solid var(--nss-surface-2);box-shadow:0 20px 50px -20px var(--nss-glow),0 0 0 1px var(--nss-line);display:flex;flex-direction:column;gap:.55rem}
+.ph-bar{display:flex;justify-content:space-between;align-items:center;padding:.2rem .3rem .4rem;font:700 .85rem var(--nss-mono);color:var(--nss-fg)}
+.ph-bar i{font-style:normal;color:var(--nss-muted)}
+.ph-card{display:flex;flex-direction:column;gap:.2rem;padding:.65rem .7rem;border-radius:14px;background:var(--nss-surface);border:1px solid var(--nss-line);font-size:.74rem;color:var(--nss-muted)}
+.ph-card b{font-size:.82rem;color:var(--nss-fg)}
+.ph-card.warn b{color:var(--nss-warn)}
+.ph-fab{position:absolute;right:1rem;bottom:1rem;display:grid;place-items:center;width:3rem;height:3rem;border-radius:1rem;background:var(--nss-accent);color:var(--nss-on-accent);font:600 1.5rem/1 var(--nss-sans);box-shadow:var(--nss-shadow,0 8px 20px -8px #000)}
+.feat.small{margin-top:1.2rem}
+.feat.small .card{background:var(--nss-bg)}
+.feat.small h3{margin:0 0 .3rem;font-size:.95rem}
+.feat.small p{margin:0;color:var(--nss-muted);font-size:.88rem}
+.android .sub{margin:1.8rem 0 .4rem;font-size:1.1rem}
+.android .steps>li{background:var(--nss-bg)}
+.build{margin-top:1rem;padding:.8rem 1rem;border:1px solid var(--nss-line);border-radius:var(--nss-radius);background:var(--nss-bg)}
+.build summary{cursor:pointer;font-weight:600}
+.build pre{margin-bottom:0}

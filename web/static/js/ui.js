@@ -12,6 +12,7 @@ export function h(spec, attrs = {}, ...kids) {
     if (v == null || v === false) continue;
     if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
     else if (k === "html") el.innerHTML = v;
+    else if (k === "value") el.value = v; // a textarea has no value attribute
     else if (k in el && typeof v !== "string") el[k] = v;
     else el.setAttribute(k, v === true ? "" : v);
   }
@@ -35,12 +36,12 @@ export function icon(name) {
 export const prefs = {
   get(key, def) {
     try {
-      const v = localStorage.getItem("samanote." + key);
+      const v = localStorage.getItem("mnemos." + key);
       return v == null ? def : JSON.parse(v);
     } catch { return def; }
   },
   set(key, value) {
-    try { localStorage.setItem("samanote." + key, JSON.stringify(value)); } catch { /* private mode */ }
+    try { localStorage.setItem("mnemos." + key, JSON.stringify(value)); } catch { /* private mode */ }
   },
 };
 
@@ -58,9 +59,11 @@ export function toast(msg, err = false, ms = 3200) {
 const sheet = () => document.getElementById("sheet");
 
 /** Opens the sheet with a title, body nodes and footer buttons; resolves with the
-    value passed to close(), or null when dismissed (Esc / backdrop). */
-function openSheet(title, body, buttons) {
+    value passed to close(), or null when dismissed (Esc / backdrop). opts.wide makes
+    a bigger panel (search, trash …); the sheet's close function is sheetClose(). */
+export function openSheet(title, body, buttons = [], opts = {}) {
   const d = sheet();
+  d.classList.toggle("wide", !!opts.wide);
   return new Promise((resolve) => {
     let done = false;
     const close = (v) => {
@@ -72,13 +75,14 @@ function openSheet(title, body, buttons) {
     d.replaceChildren(...[
       h("div.sheet-h", {}, h("h2", {}, title), h("button.ghost.icon", { "aria-label": "Close", onclick: () => close(null) }, icon("x"))),
       h("div.sheet-b", {}, body),
-      buttons.length ? h("div.sheet-f", {}, buttons.map((b) => h("button" + (b.cls || ""), { type: b.submit ? "submit" : "button", onclick: b.submit ? null : () => close(b.value) }, b.label))) : null,
+      buttons.length ? h("div.sheet-f", {}, buttons.map((b) => h("button" + (b.cls || ""), { type: b.submit ? "submit" : "button", disabled: !!b.disabled, onclick: b.onclick || (b.submit ? null : () => close(b.value)) }, b.label))) : null,
     ].filter(Boolean));
     // a "close" event from the previous sheet can arrive after this one opened: ignore it while open
     d.onclose = () => { if (!d.open) close(null); };
     d.onclick = (e) => { if (e.target === d) close(null); };
     d.showModal();
     d._close = close;
+    if (opts.onOpen) opts.onOpen(close);
   });
 }
 
@@ -118,4 +122,30 @@ export function menuSheet(title, items) {
   const p = openSheet(title, list, []);
   closeFn = sheet()._close;
   return p;
+}
+
+/** Closes the open sheet with a value. */
+export function sheetClose(v = null) { const d = sheet(); if (d.open && d._close) d._close(v); }
+
+/** "5m", "3h", "2d" or a date, for lists. */
+export function ago(ms) {
+  const s = (Date.now() - ms) / 1000;
+  if (s < 60) return "now";
+  if (s < 3600) return Math.round(s / 60) + "m";
+  if (s < 86400) return Math.round(s / 3600) + "h";
+  if (s < 86400 * 30) return Math.round(s / 86400) + "d";
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** Human file size. */
+export function size(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1048576) return Math.round(n / 1024) + " KB";
+  return (n / 1048576).toFixed(1) + " MB";
+}
+
+/** Calls fn after the input pauses for ms. */
+export function debounce(fn, ms) {
+  let t;
+  return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }

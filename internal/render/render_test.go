@@ -6,7 +6,7 @@ import (
 )
 
 func TestGFM(t *testing.T) {
-	out, err := Render("n.md", "# Title\n\n- [x] done\n- [ ] todo\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n~~old~~ https://nih.ar\n\nline one\nline two\n\nnote[^1]\n\n[^1]: foot\n")
+	out, err := Render("n.md", "# Title\n\n- [x] done\n- [ ] todo\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n~~old~~ https://nih.ar\n\nline one\nline two\n\nnote[^1]\n\n[^1]: foot\n", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,7 +21,7 @@ func TestGFM(t *testing.T) {
 }
 
 func TestRawHTMLAndScriptLinksAreDropped(t *testing.T) {
-	out, _ := Render("n.md", "<script>alert(1)</script>\n\n[x](javascript:alert(1)) <img src=x onerror=alert(1)>\n")
+	out, _ := Render("n.md", "<script>alert(1)</script>\n\n[x](javascript:alert(1)) <img src=x onerror=alert(1)>\n", nil)
 	if strings.Contains(out, "<script") || strings.Contains(out, "javascript:") || strings.Contains(out, "onerror") {
 		t.Fatalf("unsafe output:\n%s", out)
 	}
@@ -29,7 +29,7 @@ func TestRawHTMLAndScriptLinksAreDropped(t *testing.T) {
 
 func TestRelativeLinksAndImages(t *testing.T) {
 	out, _ := Render("journal/2026/day.md",
-		"![pic](../img/a%20b.png) ![web](https://x.org/i.png)\n\n[other](../other.md#h) [plain](notes) [pdf](files/r.pdf) [top](#sec) [out](../../../x.md)\n")
+		"![pic](../img/a%20b.png) ![web](https://x.org/i.png)\n\n[other](../other.md#h) [plain](notes) [pdf](files/r.pdf) [top](#sec) [out](../../../x.md)\n", nil)
 	for _, want := range []string{
 		`src="/raw/journal/img/a%20b.png"`, `src="https://x.org/i.png"`,
 		`href="#/n/journal/other.md"`, `href="#/n/journal/2026/notes.md"`,
@@ -56,8 +56,36 @@ func TestFrontmatter(t *testing.T) {
 			t.Errorf("SplitFrontmatter(%q) = %q, %q; want %q, %q", c.in, f, b, c.front, c.body)
 		}
 	}
-	out, _ := Render("n.md", "---\ntitle: <b>\n---\ntext")
+	out, _ := Render("n.md", "---\ntitle: <b>\n---\ntext", nil)
 	if !strings.Contains(out, `<pre class="frontmatter"><code>title: &lt;b&gt;</code></pre>`) {
 		t.Fatalf("frontmatter block:\n%s", out)
+	}
+}
+
+func TestObsidianEmbeds(t *testing.T) {
+	files := map[string]bool{"notes/attachments/a b.png": true, "img/logo.webp": true, "notes/other.md": true}
+	resolve := func(target, from string) (string, bool) {
+		for _, p := range []string{from + "/" + target, target, "notes/attachments/" + target, "img/" + target} {
+			if files[p] {
+				return p, true
+			}
+		}
+		return "", false
+	}
+	out, _ := Render("notes/day.md", "![[a b.png]] ![[logo.webp|240]] ![[logo.webp|a logo]] ![[other.md]] ![[missing.png]] `![[a b.png]]`\n", resolve)
+	for _, want := range []string{
+		`<img src="/raw/notes/attachments/a%20b.png" alt="a b">`,
+		`<img src="/raw/img/logo.webp" alt="logo" width="240">`,
+		`<img src="/raw/img/logo.webp" alt="a logo">`,
+		`<a href="#/n/notes/other.md">other.md</a>`,
+		`![[missing.png]]`,
+		`<code>![[a b.png]]</code>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if plain, _ := Render("n.md", "![[a.png]]", nil); !strings.Contains(plain, "![[a.png]]") {
+		t.Errorf("without a resolver an embed stays text: %s", plain)
 	}
 }

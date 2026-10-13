@@ -1,4 +1,4 @@
-// Package vault is samanote's only way to touch the notes folder. Every path from
+// Package vault is mnemos's only way to touch the notes folder. Every path from
 // the browser goes through Resolve, which keeps it inside the vault, hides dot
 // entries (.obsidian, .trash, .stfolder, .git …) and refuses symlinks that point
 // outside. Writes are atomic (temp file → fsync → rename) and carry a version so a
@@ -48,7 +48,7 @@ func (e *ConflictError) Error() string {
 	return "the file was changed by another app"
 }
 
-// PermissionError means the operating system refused samanote (the container's
+// PermissionError means the operating system refused mnemos (the container's
 // PUID:PGID) access to a file or folder in the vault — usually a folder created by
 // another app or container running as a different user.
 type PermissionError struct {
@@ -61,7 +61,7 @@ func (e *PermissionError) Error() string {
 	if where == "" {
 		where = "the vault"
 	}
-	return fmt.Sprintf("permission denied: samanote (uid %d, gid %d) may not %s in %q. "+
+	return fmt.Sprintf("permission denied: mnemos (uid %d, gid %d) may not %s in %q. "+
 		"The file or folder belongs to another user — on the server, give the notes folder back to PUID:PGID (chown -R)",
 		os.Getuid(), os.Getgid(), e.Op, where)
 }
@@ -372,7 +372,7 @@ func (v *Vault) Write(rel, content, base string, force bool) (string, error) {
 	err = atomicWrite(abs, []byte(content), mode)
 	if errors.Is(err, fs.ErrPermission) && cur != nil {
 		// The folder is not writable for us (no temp file allowed) but the file may
-		// be: overwrite it in place, as the old samanote did. Not atomic, still safe
+		// be: overwrite it in place, as the old mnemos did. Not atomic, still safe
 		// enough for a note, and the version check above already ran.
 		if dir := path.Dir(clean); !v.warned[dir] {
 			v.warned[dir] = true
@@ -407,7 +407,7 @@ func inPlaceWrite(abs string, b []byte) error {
 // atomicWrite writes next to the target and renames over it, so readers (Obsidian,
 // Syncthing, Kronos) only ever see the old or the new file, never half of one.
 func atomicWrite(abs string, b []byte, mode fs.FileMode) error {
-	tmp, err := os.CreateTemp(filepath.Dir(abs), ".samanote-*.tmp")
+	tmp, err := os.CreateTemp(filepath.Dir(abs), ".mnemos-*.tmp")
 	if err != nil {
 		return err
 	}
@@ -525,6 +525,12 @@ func (v *Vault) Trash(rel string) (string, error) {
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	return v.trashLocked(clean, abs)
+}
+
+// trashLocked moves abs (vault path clean) into the trash and records where it came
+// from, so Restore can put it back. The caller holds v.mu.
+func (v *Vault) trashLocked(clean, abs string) (string, error) {
 	dir := filepath.Join(v.root, filepath.FromSlash(v.trash))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", perm(err, "trash", v.trash)
@@ -537,7 +543,7 @@ func (v *Vault) Trash(rel string) (string, error) {
 	}
 	name := base
 	for i := 2; ; i++ {
-		if _, err := os.Lstat(filepath.Join(dir, name)); errors.Is(err, fs.ErrNotExist) {
+		if _, err := os.Lstat(filepath.Join(dir, name)); errors.Is(err, fs.ErrNotExist) && name != ledgerName {
 			break
 		}
 		if i > 9999 {
@@ -549,6 +555,7 @@ func (v *Vault) Trash(rel string) (string, error) {
 	if err := os.Rename(abs, filepath.Join(dir, name)); err != nil {
 		return "", perm(err, "trash", clean)
 	}
+	v.ledgerAdd(name, clean)
 	return v.trash + "/" + name, nil
 }
 
@@ -582,8 +589,8 @@ func notFound(err error) error {
 // Report is the result of Check.
 type Report struct {
 	Folders, Files int
-	ReadOnlyDirs   []string // folders samanote cannot create, rename or trash in
-	ReadOnlyFiles  []string // files samanote cannot save
+	ReadOnlyDirs   []string // folders mnemos cannot create, rename or trash in
+	ReadOnlyFiles  []string // files mnemos cannot save
 }
 
 // Check walks the vault (skipping hidden entries) and lists every folder and file

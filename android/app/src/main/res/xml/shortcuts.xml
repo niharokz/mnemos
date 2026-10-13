@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="new_note" android:icon="@drawable/ic_shortcut_new" android:shortcutShortLabel="@string/shortcut_new_note">
+        <intent android:action="com.nihars.mnemos.NEW_NOTE" android:targetPackage="com.nihars.mnemos" android:targetClass="com.nihars.mnemos.app.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="capture" android:icon="@drawable/ic_capture" android:shortcutShortLabel="@string/shortcut_capture">
+        <intent android:action="com.nihars.mnemos.CAPTURE" android:targetPackage="com.nihars.mnemos" android:targetClass="com.nihars.mnemos.app.CaptureActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="search" android:icon="@drawable/ic_shortcut_search" android:shortcutShortLabel="@string/shortcut_search">
+        <intent android:action="com.nihars.mnemos.SEARCH" android:targetPackage="com.nihars.mnemos" android:targetClass="com.nihars.mnemos.app.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="lock" android:icon="@drawable/ic_shortcut_lock" android:shortcutShortLabel="@string/shortcut_lock">
+        <intent android:action="com.nihars.mnemos.LOCK" android:targetPackage="com.nihars.mnemos" android:targetClass="com.nihars.mnemos.app.MainActivity" />
+    </shortcut>
+</shortcuts>

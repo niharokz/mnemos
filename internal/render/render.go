@@ -5,9 +5,9 @@
 // rendered (goldmark's safe default) and javascript: links are dropped, so a note
 // can never run code in the app. Single line breaks are kept, as in Obsidian.
 //
-// Relative links are made to work inside samanote: images load from /raw/<path>,
+// Relative links are made to work inside mnemos: images load from /raw/<path>,
 // links to other notes open them in the editor (#/n/<path>), links to other files
-// open the raw file.
+// open the raw file. Obsidian image embeds (![[photo.png]]) are shown too.
 package render
 
 import (
@@ -33,13 +33,14 @@ var md = goldmark.New(
 	goldmark.WithParserOptions(
 		parser.WithAutoHeadingID(),
 		parser.WithASTTransformers(util.Prioritized(linkRewriter{}, 100)),
+		parser.WithInlineParsers(util.Prioritized(embedParser{}, 199)), // before the link parser (200)
 	),
 	goldmark.WithRendererOptions(ghtml.WithHardWraps()),
 )
 
 // Render converts the note at notePath (vault-relative, used to resolve relative
-// links) to HTML.
-func Render(notePath, src string) (string, error) {
+// links) to HTML. resolve finds ![[embed]] targets; nil leaves embeds as text.
+func Render(notePath, src string, resolve Resolver) (string, error) {
 	front, body := SplitFrontmatter(src)
 	var buf bytes.Buffer
 	if front != "" {
@@ -49,6 +50,9 @@ func Render(notePath, src string) (string, error) {
 	}
 	ctx := parser.NewContext()
 	ctx.Set(dirKey, path.Dir(notePath))
+	if resolve != nil {
+		ctx.Set(resolverKey, resolve)
+	}
 	if err := md.Convert([]byte(body), &buf, parser.WithContext(ctx)); err != nil {
 		return "", err
 	}

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- nss tokens used outside Compose (splash, widgets, icon). -->
+    <color name="nss_bg">#070B0F</color>
+    <color name="nss_surface">#0F161B</color>
+    <color name="nss_surface2">#152027</color>
+    <color name="nss_teal">#3A807A</color>
+    <color name="nss_ink">#66BDB3</color>
+    <color name="nss_text">#E6ECEC</color>
+    <color name="nss_muted">#8B979A</color>
+</resources>

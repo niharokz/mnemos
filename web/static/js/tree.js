@@ -78,10 +78,11 @@ export class Tree {
     const stem = dot > 0 ? f.name.slice(0, dot) : f.name;
     const ext = dot > 0 ? f.name.slice(dot + 1).toLowerCase() : "";
     const where = flat && f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
-    const row = h("div.row" + (f.path === this.active ? ".on" : ""),
+    const cf = /\.sync-conflict-\d{8}-\d{6}-/.test(f.name);
+    const row = h("div.row" + (f.path === this.active ? ".on" : "") + (cf ? ".cf" : ""),
       {},
       h("button.open", { onclick: () => this.hooks.open(f.path), title: f.path, "aria-current": f.path === this.active ? "page" : null },
-        h("span.file-ic", {}, icon("file")),
+        h("span.file-ic", {}, icon(cf ? "alert" : "file")),
         h("span", {}, stem),
         ext && ext !== "md" ? h("span.ext", {}, ext) : null,
         where ? h("span.where", {}, where) : null),

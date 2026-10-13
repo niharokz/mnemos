@@ -1,4 +1,13 @@
+# LF everywhere (shell scripts and gradlew break with CRLF), binaries untouched.
 * text=auto eol=lf
+*.bat text eol=crlf
 *.png binary
+*.ico binary
+*.jar binary
+*.ttf binary
+*.pdf binary
+*.jks binary
 web/static/vendor/** linguist-vendored
 vendor/** linguist-vendored
+# CSV test fixtures must keep their exact bytes (CRLF, BOM): the tests check byte-identical saves.
+android/core/csv/src/test/resources/golden/** -text

@@ -4,6 +4,7 @@
 package httpx
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,17 +13,42 @@ import (
 	"net/url"
 	"runtime/debug"
 	"strings"
+
+	"gitlab.com/niharokz/mnemos/internal/vault"
 )
 
+// User is a signed-in user and the vault they work in.
+type User struct {
+	Name     string
+	ReadOnly bool // the demo user: every change is refused
+	Vault    *vault.Vault
+}
+
+type ctxKey struct{}
+
+// UserOf returns the signed-in user of a request that passed the Router.
+func UserOf(r *http.Request) *User {
+	u, _ := r.Context().Value(ctxKey{}).(*User)
+	return u
+}
+
+// WithUser attaches u to r (used by the Router and by tests).
+func WithUser(r *http.Request, u *User) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), ctxKey{}, u))
+}
+
+// ErrReadOnly is what the demo user gets for any change.
+const ErrReadOnly = "the demo is read-only — changes are not saved"
+
 // Header must be present on every request that changes something. Browsers cannot
-// add a custom header to a cross-site request without CORS (which samanote never
+// add a custom header to a cross-site request without CORS (which mnemos never
 // grants), so together with SameSite cookies this blocks cross-site forgery.
-const Header = "X-Samanote"
+const Header = "X-Mnemos"
 
 // SameOrigin is the CSRF check for every request that changes something: modern
 // browsers send Sec-Fetch-Site, and all send Origin on cross-site POSTs. A
 // request from another site is refused; one without either header (curl, old
-// browsers) passes this check but still needs the X-Samanote header and the
+// browsers) passes this check but still needs the X-Mnemos header and the
 // SameSite session cookie.
 func SameOrigin(r *http.Request) bool {
 	if s := r.Header.Get("Sec-Fetch-Site"); s != "" && s != "same-origin" && s != "none" {
@@ -82,12 +108,20 @@ type HandlerFunc func(w http.ResponseWriter, r *http.Request) error
 
 // Router registers signed-in API routes.
 type Router struct {
-	Mux      *http.ServeMux
-	SignedIn func(r *http.Request) bool
+	Mux     *http.ServeMux
+	Resolve func(r *http.Request) *User
 }
 
-// Handle registers pattern (Go 1.22 syntax, e.g. "PUT /api/file").
-func (rt *Router) Handle(pattern string, h HandlerFunc) {
+// Handle registers a route (Go 1.22 syntax, e.g. "PUT /api/file"). Any method but
+// GET/HEAD is a change: it needs the X-Mnemos header, must be same-origin, and is
+// refused for read-only users.
+func (rt *Router) Handle(pattern string, h HandlerFunc) { rt.handle(pattern, h, false) }
+
+// HandleSafe registers a POST that changes nothing (e.g. rendering a preview), so
+// read-only users may call it too. The CSRF checks still apply.
+func (rt *Router) HandleSafe(pattern string, h HandlerFunc) { rt.handle(pattern, h, true) }
+
+func (rt *Router) handle(pattern string, h HandlerFunc, safe bool) {
 	rt.Mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if v := recover(); v != nil {
@@ -95,7 +129,8 @@ func (rt *Router) Handle(pattern string, h HandlerFunc) {
 				Error(w, http.StatusInternalServerError, "internal error — see the server log")
 			}
 		}()
-		if !rt.SignedIn(r) {
+		u := rt.Resolve(r)
+		if u == nil {
 			Error(w, http.StatusUnauthorized, "please sign in")
 			return
 		}
@@ -108,9 +143,13 @@ func (rt *Router) Handle(pattern string, h HandlerFunc) {
 				Error(w, http.StatusForbidden, "cross-site request refused")
 				return
 			}
+			if u.ReadOnly && !safe {
+				JSON(w, http.StatusForbidden, map[string]any{"error": ErrReadOnly, "read_only": true})
+				return
+			}
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		if err := h(w, r); err != nil {
+		if err := h(w, WithUser(r, u)); err != nil {
 			var se *StatusError
 			if errors.As(err, &se) {
 				body := map[string]any{"error": se.Msg}

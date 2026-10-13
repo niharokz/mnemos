@@ -1,0 +1,169 @@
+# Mnemos CI — checks every merge request and push to the default branch, and
+# releases when a version tag is pushed:
+#
+#   check    go vet/test/gofmt, front-end syntax, versions, no secrets, Docker build,
+#            Android unit tests + lint (only when android/ changed, and on tags)
+#   build    tag v<version>: signed release APK (no INTERNET permission, checked)
+#   release  tag v<version>: APK into the package registry + GitLab release
+#
+# Release: bump VERSION, android/version.properties and both changelogs, then
+#   git tag v1.0.1 && git push origin v1.0.1
+#
+# One-time project settings (see README → "Releasing"):
+#   Settings → Repository → Protected tags: v*
+#   Settings → CI/CD → Variables (protected, masked): MNEMOS_KEYSTORE_B64 (type File),
+#     MNEMOS_STORE_PASSWORD, MNEMOS_KEY_PASSWORD, MNEMOS_KEY_ALIAS
+
+stages: [prepare, check, build, release]
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+variables:
+  GOFLAGS: -mod=vendor
+  # The Android build image is android/docker/Dockerfile (the same one build.sh uses).
+  # Bump the tag when that Dockerfile changes, so CI builds and stores the new one.
+  ANDROID_IMAGE: $CI_REGISTRY_IMAGE/android-build:jdk21-sdk36-1
+
+# Rules shared by the Android jobs: tags, and any change under android/.
+.android-rules: &android-rules
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+    - changes: [android/**/*]
+
+.release-rules: &release-rules
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+
+# ── prepare ───────────────────────────────────────────────────────────────────
+android-image:
+  stage: prepare
+  image: docker:27
+  services: [docker:27-dind]
+  variables:
+    DOCKER_TLS_CERTDIR: /certs
+  <<: *android-rules
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    # built once per tag of ANDROID_IMAGE, then reused by every pipeline
+    - |
+      if docker manifest inspect "$ANDROID_IMAGE" >/dev/null 2>&1; then
+        echo "$ANDROID_IMAGE is ready"
+      else
+        docker build -t "$ANDROID_IMAGE" android/docker && docker push "$ANDROID_IMAGE"
+      fi
+
+# ── check ─────────────────────────────────────────────────────────────────────
+go:
+  stage: check
+  image: golang:1.24-alpine
+  needs: []
+  script:
+    - unformatted=$(gofmt -l assets.go cmd internal web)
+    - '[ -z "$unformatted" ] || { echo "gofmt needed: $unformatted"; exit 1; }'
+    - go vet ./...
+    - go test ./...
+
+web:
+  stage: check
+  image: node:22-alpine
+  needs: []
+  script:
+    - for f in web/static/js/*.js; do node --check "$f"; done
+    - node -e 'JSON.parse(require("fs").readFileSync("web/static/manifest.webmanifest"))'
+
+versions:
+  stage: check
+  image: alpine:3.20
+  needs: []
+  script:
+    - sh scripts/check-version.sh "${CI_COMMIT_TAG:-}"
+
+public:
+  stage: check
+  image: alpine:3.20
+  needs: []
+  before_script:
+    - apk add --no-cache git
+  script:
+    - sh scripts/check-public.sh
+
+docker:
+  stage: check
+  image: docker:27
+  services: [docker:27-dind]
+  needs: []
+  variables:
+    DOCKER_TLS_CERTDIR: /certs
+  script:
+    # the web image builds and its tests pass inside the build
+    - docker build -t mnemos:ci .
+    # a tag also publishes it, e.g. registry.gitlab.com/niharokz/mnemos:1.0.1
+    - |
+      if [ -n "${CI_COMMIT_TAG:-}" ]; then
+        echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+        v=$(cat VERSION)
+        for t in "$v" latest; do docker tag mnemos:ci "$CI_REGISTRY_IMAGE:$t" && docker push "$CI_REGISTRY_IMAGE:$t"; done
+      fi
+
+.android:
+  image: $ANDROID_IMAGE
+  needs: [android-image]
+  before_script:
+    - chmod +x android/gradlew # in case the file mode was lost (e.g. committed from Windows)
+  variables:
+    GRADLE_USER_HOME: $CI_PROJECT_DIR/.gradle-home
+    GRADLE_OPTS: -Dorg.gradle.daemon=false
+  cache:
+    key:
+      files: [android/gradle/libs.versions.toml, android/gradle/wrapper/gradle-wrapper.properties]
+    paths: [.gradle-home/caches, .gradle-home/wrapper]
+
+android-check:
+  extends: .android
+  stage: check
+  <<: *android-rules
+  script:
+    - cd android
+    - ./gradlew --continue check lint
+  artifacts:
+    when: on_failure
+    expire_in: 1 week
+    paths: [android/**/build/reports/]
+
+# ── build ─────────────────────────────────────────────────────────────────────
+android-apk:
+  extends: .android
+  stage: build
+  needs: [android-image, android-check, go, versions]
+  <<: *release-rules
+  script:
+    - test -n "${MNEMOS_KEYSTORE_B64:-}" || { echo "Add the signing key as CI variables first (README → Releasing)"; exit 1; }
+    # the key is a File variable (or plain base64 text); it never leaves this job
+    - if [ -f "$MNEMOS_KEYSTORE_B64" ]; then base64 -d "$MNEMOS_KEYSTORE_B64"; else printf '%s' "$MNEMOS_KEYSTORE_B64" | base64 -d; fi > /tmp/mnemos.jks
+    - export MNEMOS_KEYSTORE=/tmp/mnemos.jks
+    - cd android && ./gradlew :app:assembleRelease && cd ..
+    - V=$(cat VERSION) && mkdir -p android/dist && cp android/app/build/outputs/apk/release/app-release.apk "android/dist/mnemos-$V.apk"
+    # hard rules: signed with the release key, and no INTERNET permission
+    - $ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs "android/dist/mnemos-$V.apk"
+    - '! $ANDROID_HOME/build-tools/36.0.0/aapt dump permissions "android/dist/mnemos-$V.apk" | grep -q android.permission.INTERNET'
+    - sha256sum "android/dist/mnemos-$V.apk"
+  after_script:
+    - rm -f /tmp/mnemos.jks
+  artifacts:
+    expire_in: 30 days
+    paths: [android/dist/]
+
+# ── release ───────────────────────────────────────────────────────────────────
+release:
+  stage: release
+  image: alpine:3.20
+  needs: [android-apk, docker]
+  <<: *release-rules
+  before_script:
+    - apk add --no-cache curl jq git
+  script:
+    - sh scripts/release.sh

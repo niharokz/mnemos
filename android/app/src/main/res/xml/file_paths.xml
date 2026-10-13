@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- The vault on shared storage, and the app-private demo vault. -->
+    <external-path name="vault" path="." />
+    <files-path name="demo" path="demo-vault/" />
+    <!-- The camera app writes a new photo here before it is copied next to the note. -->
+    <cache-path name="camera" path="camera/" />
+</paths>
