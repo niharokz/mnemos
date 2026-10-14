@@ -106,6 +106,7 @@ fun EditorScreen(
     onBack: () -> Unit,
     onOpenPath: (String) -> Unit,
     onOpenTable: (String) -> Unit,
+    onRenamed: (String) -> Unit = {},
 ) {
     val vm = graphViewModel(key = "editor-${session.id}-$path-$editAnyway") { EditorViewModel(session, path, it.lock.state, editAnyway) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -118,6 +119,7 @@ fun EditorScreen(
     val motion = Nss.motion
     var showDiff by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var renaming by remember(path) { mutableStateOf(false) }
     var imageChooser by remember { mutableStateOf(false) }
     var cameraUri by rememberSaveable { mutableStateOf<Uri?>(null) }
 
@@ -155,6 +157,14 @@ fun EditorScreen(
         }
     }
     LaunchedEffect(state.loading) { if (!state.loading && !query.isNullOrBlank()) vm.revealQuery(query) }
+    // A fresh "Untitled" note from + starts with its name selected, so it can be named right away.
+    var offeredName by rememberSaveable(path) { mutableStateOf(false) }
+    LaunchedEffect(state.loading) {
+        if (!state.loading && !offeredName && !state.readOnly && vm.initialText.isNullOrEmpty() && FileRename.isPlaceholder(path)) {
+            offeredName = true
+            renaming = true
+        }
+    }
 
     val view = if (!state.isMarkdown) ViewMode.EDIT else if (!wide && state.view == ViewMode.SPLIT) ViewMode.EDIT else state.view
 
@@ -168,7 +178,14 @@ fun EditorScreen(
                 title = {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(VaultPaths.name(path), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
+                            EditorTitle(
+                                path = path,
+                                editing = renaming,
+                                onEditingChange = { renaming = it },
+                                enabled = !state.readOnly && !state.loading,
+                                onRename = { name -> vm.rename(name, onRenamed) },
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
                             Spacer(Modifier.width(8.dp))
                             SaveDot(state.status)
                         }
@@ -187,6 +204,12 @@ fun EditorScreen(
                                 menu = false
                                 vm.openFind(true)
                             })
+                            if (!state.readOnly) {
+                                DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(NssIcons.Edit, null) }, onClick = {
+                                    menu = false
+                                    renaming = true
+                                })
+                            }
                             if (state.isCsv) {
                                 DropdownMenuItem(text = { Text("Table view") }, leadingIcon = { Icon(NssIcons.Table, null) }, onClick = {
                                     menu = false

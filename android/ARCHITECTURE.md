@@ -135,6 +135,18 @@ adaptive icon per logo colour from the same shapes. The manifest has one `activi
 colour pointing at `MainActivity`; `LauncherIcon.apply` enables exactly one whenever the owner's
 logo colour changes. Android can't recolour an icon at runtime, so the colours are fixed presets.
 
+## Renaming from the editor
+
+Tapping the file name in the editor's top bar (`EditorTitle`) edits the name without its
+extension; `FileRename` checks it (no `/ \ : * ? " < > |`, no leading dot, no Windows-reserved
+names, ≤ 255 bytes) and keeps the folder and extension. `EditorViewModel.rename` saves pending
+edits under the old name first, then calls `VaultSession.rename`, which never overwrites and
+routes a case-only change ("idea" → "Idea") through a temporary name because shared storage
+ignores case. Pins, the last-open note and widgets (`AppGraph.onOwnerMoved` →
+`WidgetPrefs.renamed`) follow the new path; the screen is then replaced with the renamed file
+(phones swap the back-stack entry, tablets update the selection). New "Untitled" notes open with
+the name already selected.
+
 ## Adding a file-type viewer
 
 Implement `FileTypeHandler` (in `app/AppNav.kt`) and add it to `fileHandlers`. The first handler

@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.nihars.mnemos.app.widget.WidgetPrefs
 import com.nihars.mnemos.app.widget.WidgetUpdater
 import com.nihars.mnemos.core.data.AppGraph
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -25,6 +26,7 @@ class MnemosApp : Application() {
         super.onCreate()
         graph = AppGraph(this)
         graph.onVaultChanged = { WidgetUpdater.updateAll(this) }
+        graph.onOwnerMoved = { from, to -> WidgetPrefs.renamed(this, from, to) }
 
         // Auto-lock timer runs from when the whole app leaves the foreground.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {

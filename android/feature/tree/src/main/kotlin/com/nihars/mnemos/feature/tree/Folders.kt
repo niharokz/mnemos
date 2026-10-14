@@ -93,7 +93,7 @@ class FoldersViewModel(private val session: VaultSession) : ViewModel() {
     fun create(path: String) = act { session.createFolder(VaultPaths.parent(path), VaultPaths.name(path)) }
 
     fun rename(from: String, to: String) = act {
-        session.move(from, to)
+        session.rename(from, to)
         // The default folder follows a rename.
         val def = session.settings.value.newNoteFolder
         if (def == from || def.startsWith("$from/")) session.settingsStore.update { it.copy(newNoteFolder = VaultPaths.normalize(to) + def.removePrefix(from)) }

@@ -205,6 +205,10 @@ private fun AppNavHost(graph: AppGraph, nav: NavHostController, session: VaultSe
                 showBack = true,
                 onBack = { nav.popBackStack() },
                 onOpen = { nav.navigate(Routes.file(it)) },
+                // Replace this screen with the renamed file, so Back still goes where it went before.
+                onRenamed = { renamed ->
+                    nav.navigate(Routes.file(renamed)) { popUpTo(Routes.FILE) { inclusive = true } }
+                },
             )
         }
         composable(Routes.TRASH) {
@@ -304,7 +308,12 @@ private fun MainScaffold(graph: AppGraph, session: VaultSession, nav: NavHostCon
                         if (path == null) {
                             EmptyState(NssIcons.FileText, "Pick a note", "Choose a file on the left to open it here.", Modifier.align(Alignment.Center))
                         } else {
-                            FileRoute(session, path, selectedQuery, showBack = false, onBack = { selected = null }, onOpen = { open(it) })
+                            FileRoute(
+                                session, path, selectedQuery, showBack = false,
+                                onBack = { selected = null },
+                                onOpen = { open(it) },
+                                onRenamed = { selected = it; selectedQuery = null },
+                            )
                         }
                     }
                 }
@@ -344,6 +353,8 @@ class FileContext(
     val setRaw: (Boolean) -> Unit,
     val editAnyway: Boolean,
     val setEditAnyway: (Boolean) -> Unit,
+    /** The file was renamed from its screen; reopen it at the new path. */
+    val onRenamed: (String) -> Unit,
 )
 
 /**
@@ -377,7 +388,7 @@ private object EditorHandler : FileTypeHandler {
     @Composable
     override fun Content(ctx: FileContext) = EditorScreen(
         ctx.session, ctx.path, ctx.query, editAnyway = ctx.editAnyway, ctx.showBack, ctx.onBack,
-        onOpenPath = ctx.onOpen, onOpenTable = { ctx.setRaw(false) },
+        onOpenPath = ctx.onOpen, onOpenTable = { ctx.setRaw(false) }, onRenamed = ctx.onRenamed,
     )
 }
 
@@ -400,7 +411,15 @@ private val fileHandlers: List<FileTypeHandler> = listOf(TableHandler, LargeText
 
 /** Picks the right screen for a file by content (text vs binary, size, then extension). */
 @Composable
-fun FileRoute(session: VaultSession, path: String, query: String?, showBack: Boolean, onBack: () -> Unit, onOpen: (String) -> Unit) {
+fun FileRoute(
+    session: VaultSession,
+    path: String,
+    query: String?,
+    showBack: Boolean,
+    onBack: () -> Unit,
+    onOpen: (String) -> Unit,
+    onRenamed: (String) -> Unit,
+) {
     var raw by rememberSaveable(path) { mutableStateOf(false) }
     var editAnyway by rememberSaveable(path) { mutableStateOf(false) }
     if (ConflictFiles.isConflict(path)) {
@@ -423,6 +442,6 @@ fun FileRoute(session: VaultSession, path: String, query: String?, showBack: Boo
         }
         return
     }
-    val ctx = FileContext(session, path, query, showBack, onBack, onOpen, raw, { raw = it }, editAnyway, { editAnyway = it })
+    val ctx = FileContext(session, path, query, showBack, onBack, onOpen, raw, { raw = it }, editAnyway, { editAnyway = it }, onRenamed)
     fileHandlers.first { it.handles(k, ctx) }.Content(ctx)
 }

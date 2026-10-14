@@ -3,6 +3,13 @@
 The updater shows the section for the version it is about to install, so keep one `## <version>`
 heading per release.
 
+## 1.1.0
+
+- **Rename a note right from the editor.** Tap its name in the top bar (or ⋯ → Rename), type, press Done. The folder and extension stay the same and an existing file is never overwritten.
+- New notes from + open with "Untitled" selected, so you can name them straight away.
+- Changing only the capital letters of a name ("idea" → "Idea") now works, from the editor, the tree and Manage folders.
+- Pins, widgets (Open note, Note preview) and the last-open note follow a renamed note or folder.
+
 ## 1.0.1
 
 - **Pictures in notes.** Add photos from the gallery or the camera with the new picture button (formatting bar, or ⋯ → Add picture). They are saved in `attachments/` next to the note — the same place and the same naming as the web app — and linked with plain markdown at the cursor. HEIC photos are turned into upright JPEGs so every device and browser can show them.

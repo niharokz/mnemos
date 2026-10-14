@@ -66,6 +66,9 @@ class AppGraph(val app: Application) {
     /** Set by :app so features can ask for a widget refresh without depending on :app. */
     var onVaultChanged: () -> Unit = {}
 
+    /** Owner file moved or renamed by the app (old path, new path); widgets re-point to it. */
+    var onOwnerMoved: (String, String) -> Unit = { _, _ -> }
+
     val vaultLocation: Flow<VaultLocation> = boot.data.map { VaultLocation(it[VAULT_PATH], it[SAF_TREE]) }
 
     /** The owner's name, asked once at setup so the app can greet them. */
@@ -131,6 +134,7 @@ class AppGraph(val app: Application) {
         s.rescan()
         // Widgets only show the owner's notes; refresh them (debounced) when the vault changes.
         if (kind == UserKind.OWNER) {
+            s.onMoved = { from, to -> onOwnerMoved(from, to) }
             s.scope.launch { s.changes.debounce(1000).collect { onVaultChanged() } }
         }
         return s

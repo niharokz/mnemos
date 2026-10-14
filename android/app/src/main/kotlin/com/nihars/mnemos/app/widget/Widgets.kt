@@ -170,6 +170,24 @@ object WidgetPrefs {
     fun set(c: Context, id: Int, path: String) = prefs(c).edit().putString("preview_$id", path).apply()
     fun clear(c: Context, id: Int) = prefs(c).edit().remove("preview_$id").apply()
 
+    /** A note was renamed or moved in the app: every widget showing [from] now shows [to]. */
+    fun renamed(c: Context, from: String, to: String) {
+        val p = prefs(c)
+        // A renamed folder moves every note inside it too.
+        val moved = p.all.mapNotNull { (k, v) ->
+            val old = v as? String ?: return@mapNotNull null
+            when {
+                !k.startsWith("preview_") -> null
+                old == from -> k to to
+                old.startsWith("$from/") -> k to to + old.substring(from.length)
+                else -> null
+            }
+        }
+        if (moved.isEmpty()) return
+        p.edit().apply { moved.forEach { (k, v) -> putString(k, v) } }.apply()
+        WidgetUpdater.updateAll(c)
+    }
+
     /** Text files a preview widget can show (the config screen lists only these). */
     internal fun isNote(name: String) = FileKinds.viewKey(name) == "md" || FileKinds.guess(name) == FileKind.TEXT
 }

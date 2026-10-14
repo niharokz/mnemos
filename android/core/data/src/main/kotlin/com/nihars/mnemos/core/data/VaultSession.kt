@@ -61,6 +61,9 @@ class VaultSession(
 
     private val _changes = MutableSharedFlow<Set<String>>(extraBufferCapacity = 32)
 
+    /** Called after this app moves or renames a file (old path, new path), so widgets can follow it. */
+    var onMoved: (String, String) -> Unit = { _, _ -> }
+
     /** Paths changed by anyone (watcher) or by us (saves, moves). Screens refresh from this. */
     val changes: SharedFlow<Set<String>> = _changes
 
@@ -134,8 +137,43 @@ class VaultSession(
     /** Rename/move; never overwrites. Pins follow the file. */
     suspend fun move(from: String, to: String) {
         io { fs.move(from, to) }
-        settingsStore.renamePinned(from, VaultPaths.normalize(to))
+        moved(VaultPaths.normalize(from), VaultPaths.normalize(to))
+    }
+
+    private suspend fun moved(from: String, to: String) {
+        settingsStore.renamePinned(from, to)
+        settingsStore.lastOpen()?.let { last ->
+            if (last == from) settingsStore.setLastOpen(to)
+            else if (last.startsWith("$from/")) settingsStore.setLastOpen(to + last.substring(from.length))
+        }
+        runCatching { onMoved(from, to) }
         notifyChanged(from, to)
+    }
+
+    /**
+     * Renames [from] to [to] (normally the same folder). Never overwrites. A change of letter case
+     * only ("idea.md" → "Idea.md") goes through a temporary name, because Android's shared storage
+     * ignores case and would report the target as taken.
+     */
+    suspend fun rename(from: String, to: String) {
+        val src = VaultPaths.normalize(from)
+        val dst = VaultPaths.normalize(to)
+        if (src != dst && src.equals(dst, ignoreCase = true)) {
+            val dir = VaultPaths.parent(dst)
+            val tmp = VaultPaths.join(dir, VaultPaths.uniqueName(dir, "${VaultPaths.stem(VaultPaths.name(dst))} renaming.tmp") { fs.exists(it) })
+            io {
+                fs.move(src, tmp)
+                try {
+                    fs.move(tmp, dst)
+                } catch (e: Exception) {
+                    runCatching { fs.move(tmp, src) }
+                    throw e
+                }
+            }
+            moved(src, dst)
+        } else {
+            move(src, dst)
+        }
     }
 
     suspend fun duplicate(path: String): String = io {

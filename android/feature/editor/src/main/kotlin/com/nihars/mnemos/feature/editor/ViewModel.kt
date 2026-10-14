@@ -153,6 +153,7 @@ class EditorViewModel(
     fun currentText(): String = live?.toString() ?: savedText
 
     private fun scheduleAutosave() {
+        if (renaming) return
         if (_state.value.blocker != null || _state.value.readOnly) return
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
@@ -161,8 +162,65 @@ class EditorViewModel(
         }
     }
 
+    /** True from the start of a rename until the screen moves to the new path; stops "missing file" checks. */
+    private var renaming = false
+
+    /**
+     * Renames the open file to [input] (name without extension; same folder, same extension).
+     * Unsaved edits are saved first under the old name, then the file is moved; never overwrites.
+     * [onRenamed] gets the new path so the screen can reopen there.
+     */
+    fun rename(input: String, onRenamed: (String) -> Unit) {
+        if (renaming) return
+        val target = when (val r = FileRename.target(path, input)) {
+            FileRename.Result.Same -> return
+            is FileRename.Result.Invalid -> {
+                _state.update { it.copy(error = r.reason) }
+                return
+            }
+            is FileRename.Result.Ok -> r.path
+        }
+        val s = _state.value
+        if (s.readOnly || s.loading) {
+            _state.update { it.copy(error = "This file can't be renamed right now.") }
+            return
+        }
+        if (s.blocker != null) {
+            _state.update { it.copy(error = "Resolve the banner first, then rename.") }
+            return
+        }
+        renaming = true
+        autosaveJob?.cancel()
+        viewModelScope.launch {
+            try {
+                if (isDirty()) save()
+                if (isDirty() || _state.value.blocker != null) {
+                    _state.update { it.copy(error = if (it.blocker != null) "Resolve the banner first, then rename." else "Couldn't save before renaming. Try again.") }
+                    renaming = false
+                    return@launch
+                }
+                session.rename(path, target)
+                // Anything typed while the move ran goes into the renamed file (same bytes on disk, so the version still matches).
+                val late = live?.toString()
+                if (isDirty() && late != null && late != savedText) {
+                    val bytes = withContext(Dispatchers.Default) { TextCodec.encode(late, format) }
+                    withContext(Dispatchers.IO) { session.saver.save(target, bytes, baseVersion) }
+                    session.notifyChanged(target)
+                }
+                onRenamed(target)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                renaming = false
+                _state.update { it.copy(error = e.message ?: "Couldn't rename.") }
+                if (isDirty()) scheduleAutosave()
+            }
+        }
+    }
+
     /** Saves now if there are unsaved edits (leaving the screen, background, lock, Ctrl+S). */
     fun flush() {
+        if (renaming) return
         autosaveJob?.cancel()
         if (isDirty()) viewModelScope.launch { save() }
     }
@@ -211,7 +269,7 @@ class EditorViewModel(
 
     /** Version check against disk: reload clean editors in place; dirty ones will hit the conflict banner on save. */
     fun checkOutside() = viewModelScope.launch {
-        if (_state.value.loading || _state.value.blocker != null) return@launch
+        if (renaming || _state.value.loading || _state.value.blocker != null) return@launch
         val disk = withContext(Dispatchers.IO) { runCatching { if (session.fs.exists(path)) session.fs.readBytes(path) else null }.getOrNull() }
         if (disk == null) {
             if (!isDirty()) _state.update { it.copy(blocker = Blocker.Missing, status = SaveStatus.CONFLICT) }

@@ -18,7 +18,7 @@ self-contained Gradle project; run every command below from here.
 | | |
 |---|---|
 | Any text file | `.md`, `.txt`, `.csv`, `.tsv`, `.log`, `.json`, `.yaml`, `.ini`, code — anything that is valid text |
-| Markdown | Fast `EditText` editor with incremental highlighting, list continuation, auto-pairs, formatting toolbar, find & replace, undo/redo; native live preview (tables, task lists, footnotes, front matter, images); Edit / Split / Preview |
+| Markdown | Fast `EditText` editor with incremental highlighting, list continuation, auto-pairs, formatting toolbar, find & replace, undo/redo; native live preview (tables, task lists, footnotes, front matter, images); Edit / Split / Preview; tap the name in the top bar to rename the note in place |
 | Pictures | Add photos from the gallery or camera: saved in `attachments/` next to the note (same rules as the web app), linked at the cursor. Obsidian `![[photo.png]]` embeds show; tap a picture for full screen with pinch-zoom |
 | CSV / TSV | Real table: sticky header and first column, virtualized rows and columns, cell editing, view-only sort and filter, column stats. Saving after no edits is byte-identical; a one-cell edit rewrites only that row |
 | Big files | Over 2 MB opens in a memory-mapped viewer with search, jump to line and follow-tail for logs; "Edit anyway" up to 10 MB |

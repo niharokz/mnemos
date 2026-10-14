@@ -188,7 +188,7 @@ class TreeViewModel(private val session: VaultSession) : ViewModel() {
     fun undoShown() = _state.update { it.copy(undo = null) }
 
     fun move(from: String, to: String) = act {
-        session.move(from, to)
+        session.rename(from, to)
         if (from in expanded) {
             expanded.remove(from)
             expanded += VaultPaths.normalize(to)

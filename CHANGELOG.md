@@ -2,6 +2,10 @@
 
 This is the web app's changelog. The Android app has its own: [android/CHANGELOG.md](android/CHANGELOG.md).
 
+## 1.1.0 - 2026-10-14
+
+- No changes to the web app; the version moves with the Android app (rename notes from the editor — see [android/CHANGELOG.md](android/CHANGELOG.md)).
+
 ## 1.0.1 - 2026-10-13
 
 - **Images.** Paste, drop or pick images (🖼 in the formatting bar) into a note. They are saved in `attachments/` next to the note — the same place the Android app uses — and linked with plain markdown. Uploads are checked to really be PNG, JPEG, GIF, WebP or AVIF, get a safe name and never overwrite (`MNEMOS_MAX_UPLOAD_MB`, default 20).
