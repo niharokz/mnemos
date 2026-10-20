@@ -52,16 +52,18 @@ same features, slower indexing, and saves overwrite in place because the picker 
 Needs Docker. Nothing else is installed on the host.
 
 ```sh
-./build.sh keystore   # once: creates the signing key outside the repo (~/.mnemos-keys)
+./build.sh keystore   # once: creates the signing key outside the repo ($KEYS_HOME/.mnemos-keys)
 ./build.sh            # signed release APK → dist/mnemos-<version>.apk (checks: no INTERNET permission)
 ./build.sh check      # unit tests + Android lint (warnings are errors)
 ./build.sh install    # adb install over USB
 ./build.sh profile    # regenerate the Baseline Profile (host SDK + connected device)
+./build.sh ci-secrets # prepare the same key for GitLab CI (see the main README → Building and releasing)
 ```
 
 The first build downloads Gradle, the Android SDK and dependencies into a Docker volume; later
 builds work offline. The key and its passwords (`mnemos.jks`, `keystore.env`) live in
-`~/.mnemos-keys`, outside the repo. Back up that folder — updates must be signed with the same key.
+`$KEYS_HOME/.mnemos-keys` (default `~/.local/share/keys/.mnemos-keys`), outside the repo; an old
+`~/.mnemos-keys` is moved there on the next build. Back up that folder — updates must be signed with the same key.
 
 The version lives in `version.properties` only.
 

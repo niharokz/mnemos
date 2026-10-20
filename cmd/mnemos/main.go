@@ -6,6 +6,8 @@
 //	mnemos hash-password    print a bcrypt hash for MNEMOS_PASSWORD
 //	mnemos check            validate the settings and find files mnemos cannot write
 //	mnemos health           exit 0 if the running server answers (Docker healthcheck)
+//	mnemos bans             list the banned client addresses
+//	mnemos unban <ip>       lift a ban (the running server picks it up within seconds)
 //	mnemos version
 package main
 
@@ -18,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -27,6 +30,7 @@ import (
 	"gitlab.com/niharokz/mnemos/internal/auth"
 	"gitlab.com/niharokz/mnemos/internal/config"
 	"gitlab.com/niharokz/mnemos/internal/demo"
+	"gitlab.com/niharokz/mnemos/internal/guard"
 	"gitlab.com/niharokz/mnemos/internal/httpx"
 	"gitlab.com/niharokz/mnemos/internal/server"
 	"gitlab.com/niharokz/mnemos/internal/vault"
@@ -42,6 +46,8 @@ usage: mnemos <command>
   hash-password    print a bcrypt hash to use as MNEMOS_PASSWORD
   check            validate the settings and list notes/folders mnemos cannot write
   health           check that the running server answers
+  bans             list the banned client addresses
+  unban <ip>       lift a ban (takes effect in the running server within seconds)
   version          print the version
 `
 
@@ -62,6 +68,14 @@ func main() {
 		err = check()
 	case "health":
 		err = health()
+	case "bans":
+		err = listBans()
+	case "unban":
+		if len(os.Args) < 3 {
+			err = fmt.Errorf("usage: mnemos unban <ip>")
+		} else {
+			err = unban(os.Args[2])
+		}
 	case "version", "--version", "-v":
 		fmt.Println("mnemos", version)
 	case "help", "--help", "-h":
@@ -86,19 +100,31 @@ func serve() error {
 	}
 	accounts := []*auth.Account{{User: httpx.User{Name: cfg.User, Vault: v}, Password: cfg.Password}}
 	if cfg.DemoEnabled {
-		dir, err := demo.Build()
-		if err != nil {
-			return fmt.Errorf("demo vault: %w", err)
+		// The demo is optional: if its sample vault can't be unpacked (no writable temp
+		// folder), log why and serve your notes without it instead of crash-looping.
+		if dv, dir, err := buildDemo(cfg.MaxFileBytes()); err != nil {
+			log.Printf("WARN demo user disabled: %v (mount a writable /tmp, e.g. tmpfs /tmp:size=32m,mode=1777, or set MNEMOS_DEMO=false)", err)
+		} else {
+			defer os.RemoveAll(dir)
+			accounts = append(accounts, &auth.Account{User: httpx.User{Name: cfg.DemoUser, ReadOnly: true, Vault: dv},
+				Password: cfg.DemoPassword, ShowHint: true})
 		}
-		defer os.RemoveAll(dir)
-		dv, err := vault.New(dir, ".trash", nil, cfg.MaxFileBytes())
-		if err != nil {
-			return err
-		}
-		accounts = append(accounts, &auth.Account{User: httpx.User{Name: cfg.DemoUser, ReadOnly: true, Vault: dv},
-			Password: cfg.DemoPassword, ShowHint: true})
 	}
 	a := auth.New(cfg.Secret, accounts...)
+	var g *guard.Guard
+	if cfg.BanAfter > 0 {
+		file := stateFile(cfg.StateDir)
+		g = newGuard(file, cfg.BanAfter, cfg.BanDays, cfg.BanPrivate)
+		a.Guard = g
+		where := "in memory only"
+		if file != "" {
+			where = "kept in " + file
+		}
+		log.Printf("guard: %d failed sign-ins or scanner probes in 24 h ban an address for %d days (%d banned now, %s)",
+			cfg.BanAfter, cfg.BanDays, len(g.List()), where)
+	} else {
+		log.Printf("WARN MNEMOS_BAN_AFTER=0 — repeated failures are only slowed down, never banned")
+	}
 	switch {
 	case cfg.Secret == "":
 		log.Printf("WARN MNEMOS_SECRET is empty — sign-ins will not survive a restart (make one with: openssl rand -hex 32)")
@@ -110,7 +136,7 @@ func serve() error {
 	}
 
 	h := server.New(a, server.Options{Version: version, AutosaveMS: cfg.AutosaveMS,
-		CaptureNote: cfg.CaptureNote, TemplatesDir: cfg.TemplatesDir, MaxUploadMB: cfg.MaxUploadMB})
+		CaptureNote: cfg.CaptureNote, TemplatesDir: cfg.TemplatesDir, MaxUploadMB: cfg.MaxUploadMB, Guard: g})
 	srv := &http.Server{Addr: cfg.Listen, Handler: h, ReadHeaderTimeout: server.ReadHeaderTimeout,
 		ReadTimeout: server.ReadTimeout, WriteTimeout: server.WriteTimeout, IdleTimeout: server.IdleTimeout,
 		MaxHeaderBytes: server.MaxHeaderBytes, ErrorLog: log.New(os.Stderr, "http: ", log.LstdFlags)}
@@ -204,5 +230,87 @@ func health() error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("health check returned %s", resp.Status)
 	}
+	return nil
+}
+
+// buildDemo unpacks the demo user's sample vault into a temporary folder.
+func buildDemo(maxFileBytes int64) (*vault.Vault, string, error) {
+	dir, err := demo.Build()
+	if err != nil {
+		return nil, "", fmt.Errorf("sample vault: %w", err)
+	}
+	dv, err := vault.New(dir, ".trash", nil, maxFileBytes)
+	if err != nil {
+		os.RemoveAll(dir)
+		return nil, "", err
+	}
+	return dv, dir, nil
+}
+
+// stateFile is where bans are kept; "" when the folder can't be written (memory only).
+func stateFile(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		log.Printf("WARN state folder %s: %v — bans are kept in memory only", dir, err)
+		return ""
+	}
+	f, err := os.CreateTemp(dir, ".probe-*")
+	if err != nil {
+		log.Printf("WARN state folder %s is not writable (%v) — bans are kept in memory only", dir, err)
+		return ""
+	}
+	f.Close()
+	os.Remove(f.Name())
+	return filepath.Join(dir, "bans.json")
+}
+
+func newGuard(file string, after, days int, private bool) *guard.Guard {
+	return guard.New(guard.Options{MaxStrikes: after, BanFor: time.Duration(days) * 24 * time.Hour,
+		StateFile: file, BanPrivate: private})
+}
+
+func guardForCLI() (*guard.Guard, error) {
+	dir := os.Getenv("MNEMOS_STATE")
+	if dir == "" {
+		dir = "/state"
+	}
+	file := filepath.Join(dir, "bans.json")
+	if _, err := os.Stat(file); err != nil {
+		return nil, fmt.Errorf("no bans recorded in %s yet", dir)
+	}
+	return newGuard(file, 5, 7, false), nil
+}
+
+func listBans() error {
+	g, err := guardForCLI()
+	if err != nil {
+		return err
+	}
+	list := g.List()
+	if len(list) == 0 {
+		fmt.Println("no banned addresses")
+		return nil
+	}
+	for _, b := range list {
+		fmt.Printf("%-40s until %s  (%s)\n", b.IP, b.Until.Local().Format("2006-01-02 15:04"), b.Reason)
+	}
+	return nil
+}
+
+func unban(ip string) error {
+	g, err := guardForCLI()
+	if err != nil {
+		return err
+	}
+	ok, err := g.Unban(strings.TrimSpace(ip))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%s is not banned", ip)
+	}
+	fmt.Println("unbanned", ip)
 	return nil
 }

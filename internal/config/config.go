@@ -35,6 +35,10 @@ type Config struct {
 	DemoEnabled  bool     // MNEMOS_DEMO, default true — read-only demo user with a sample vault
 	DemoUser     string   // MNEMOS_DEMO_USER, default "demouser"
 	DemoPassword string   // MNEMOS_DEMO_PASSWORD, default "demo" (shown on the sign-in card)
+	BanAfter     int      // MNEMOS_BAN_AFTER, default 5 — failed sign-ins / scanner probes in 24 h that ban an IP (0 = off)
+	BanDays      int      // MNEMOS_BAN_DAYS, default 7 — how long a ban lasts
+	BanPrivate   bool     // MNEMOS_BAN_PRIVATE, default false — also ban LAN/loopback addresses
+	StateDir     string   // MNEMOS_STATE, default /state — where bans are kept across restarts
 }
 
 // MaxFileBytes is MaxFileMB in bytes.
@@ -125,6 +129,8 @@ func Load() (Config, error) {
 		DemoEnabled:  !strings.EqualFold(env("DEMO", "true"), "false"),
 		DemoUser:     strings.ToLower(env("DEMO_USER", "demouser")),
 		DemoPassword: env("DEMO_PASSWORD", "demo"),
+		BanPrivate:   strings.EqualFold(env("BAN_PRIVATE", "false"), "true"),
+		StateDir:     env("STATE", "/state"),
 	}
 	for _, h := range strings.Split(raw("HIDDEN"), ",") {
 		if h = strings.Trim(strings.TrimSpace(h), "/"); h != "" {
@@ -139,6 +145,12 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if c.MaxUploadMB, err = envInt("MAX_UPLOAD_MB", 20, 1, 200); err != nil {
+		return c, err
+	}
+	if c.BanAfter, err = envInt("BAN_AFTER", 5, 0, 100); err != nil {
+		return c, err
+	}
+	if c.BanDays, err = envInt("BAN_DAYS", 7, 1, 365); err != nil {
 		return c, err
 	}
 	if c.Password == "" {

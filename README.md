@@ -149,6 +149,8 @@ ticking tasks and the preview work, nothing is saved, and the page says so.
 - HMAC-signed session cookie — `__Host-mnemos` over HTTPS, HttpOnly, SameSite=Lax, 30 days — keyed per account on the secret *and* the password, so changing either signs that account out everywhere.
 - The demo user is read-only **on the server**: one check in the router refuses every change for it.
 - 5 failed sign-ins per IP in 15 minutes → locked out. The client IP comes from `CF-Connecting-IP`, `X-Real-IP` or the last `X-Forwarded-For` entry, so **the container must only be reachable through your proxy** (it publishes no port by default).
+- **Bans:** 5 failed sign-ins *or* scanner probes (`/.env`, `/.git/…`, `wp-admin`, `*.php`, …) from one address within 24 h ban it for 7 days — it then gets `403` for everything, the about page included. Probes always get `404`; signed-in users are never struck. Bans are kept in the `mnemos-state` volume, so restarts don't clear them. LAN/loopback addresses are never banned (`MNEMOS_BAN_PRIVATE=true` changes that). `docker exec mnemos /mnemos bans` lists them, `… /mnemos unban <ip>` lifts one. Tune with `MNEMOS_BAN_AFTER` / `MNEMOS_BAN_DAYS`.
+- Only the signed-in user's own vault is reachable: every `/api/` and `/raw/` request needs a valid session, and dot files (`.env`, `.git`, `.obsidian` …) are never listed, read or written, even for the owner.
 - Every change is a same-origin JSON request with an `X-Mnemos` header; cross-site requests are refused.
 - Paths are confined to the vault: `..` cannot climb out, symlinks that point outside are refused, dot folders are hidden.
 - Strict CSP (no inline scripts, no third-party anything), HSTS, no framing. Raw files are served with a sandbox CSP; HTML/JS files as plain text.
@@ -173,51 +175,109 @@ Everything about it — features, build, signing, offline updates — is in
 
 ```sh
 cd android
-./build.sh keystore      # once: signing key in ~/.mnemos-keys (back it up)
+./build.sh keystore      # once: signing key in $KEYS_HOME/.mnemos-keys (back it up)
 ./build.sh               # → android/dist/mnemos-<version>.apk
 ```
 
-## Versions and releases
+## Building and releasing
 
 Both apps share one version: `VERSION` (embedded in the web binary) and
 `android/version.properties` (`versionName`, plus a `versionCode` that goes up by one each
 release). `sh scripts/check-version.sh` checks they agree and that both changelogs have a
-section for it.
+`## <version>` section.
 
-GitLab CI (`.gitlab-ci.yml`) checks every merge request and push to the main branch:
-Go vet/tests/format, front-end syntax, versions, no committed secrets, the Docker build, and
-— when `android/` changed — the Android unit tests and lint.
+Everything below can be done **locally** (on nimory, with Docker) or by **GitLab CI**; both
+use the same build image (`android/docker/Dockerfile`) and the same signing key, so an APK
+from either installs over the other.
+
+### Locally
+
+**Web app** — build and (re)start the container from the repo root:
+
+```sh
+docker compose up -d --build
+docker logs mnemos            # "mnemos <version> listening on :8080 …" and the guard line
+```
+
+**Android app** — from `android/` (needs only Docker):
+
+```sh
+cd android
+./build.sh keystore           # once: key + passwords in $KEYS_HOME/.mnemos-keys (back it up)
+./build.sh check              # unit tests + lint, as CI runs them
+./build.sh                    # signed APK → android/dist/mnemos-<version>.apk
+./build.sh install            # adb install over USB (optional)
+```
+
+The key folder is `$KEYS_HOME/.mnemos-keys` (from `~/.zprofile`; default
+`~/.local/share/keys/.mnemos-keys`); `MNEMOS_KEY_DIR` overrides it. `build.sh` keeps it at
+mode 700 and its files at 600, and moves an old `~/.mnemos-keys` there once.
+
+**Publishing a local build** as the GitLab release (same result as the tag pipeline):
+
+```sh
+sh scripts/check-version.sh
+git tag v1.1.0 && git push origin main v1.1.0      # skip if CI should do the release instead
+GITLAB_TOKEN=glpat-… sh scripts/release.sh         # token scope api; needs curl and jq
+```
+
+### Applying a patch
+
+Fixes that arrive as a zip go in `patch/` (gitignored, so it is never committed). The paths
+in the zip start at the repo root:
+
+```sh
+cd /home/datar/docker/mnemos
+unzip -o patch/<name>.zip      # -o overwrites without asking (lowercase o)
+git status && git diff --stat  # review what changed
+docker compose up -d --build   # web app; for Android: cd android && ./build.sh
+git checkout -- . && git clean -fd -e patch   # undo, if needed
+```
+
+### With GitLab CI
+
+`.gitlab-ci.yml` checks every merge request and push to `main`: Go vet/tests/format,
+front-end syntax, versions, no committed secrets, the Docker build and — when `android/`
+changed — the Android unit tests and lint (every lint problem is printed in the job log; the
+full report is in the job's artifacts).
+
+**One-time setup** (the same key as your local builds — phones only accept updates signed
+with the key they were installed with):
+
+```sh
+cd android && ./build.sh ci-secrets   # writes $KEYS_HOME/.mnemos-keys/mnemos.jks.b64
+```
+
+then on GitLab, *Settings → CI/CD → Variables*, all **Protected**, the passwords also **Masked**:
+
+| Variable | Value |
+|---|---|
+| `MNEMOS_KEYSTORE_B64` | type **File**: the contents of `mnemos.jks.b64` (delete that file afterwards) |
+| `MNEMOS_STORE_PASSWORD`, `MNEMOS_KEY_PASSWORD`, `MNEMOS_KEY_ALIAS` | the values in `$KEYS_HOME/.mnemos-keys/keystore.env` |
+
+and *Settings → Repository → Protected tags*: protect `v*`, so only maintainers can release
+and the protected variables reach tag pipelines.
 
 **Releasing** is pushing a tag:
 
 ```sh
-sh scripts/check-version.sh            # VERSION, version.properties, changelogs agree
-git tag v1.0.1 && git push origin v1.0.1
+# bump VERSION + android/version.properties (versionCode +1), add both changelog sections
+sh scripts/check-version.sh
+git commit -am "Mnemos 1.2.0" && git push
+git tag v1.2.0 && git push origin v1.2.0
 ```
 
-The tag pipeline builds and signs the APK, checks it has no INTERNET permission, publishes
-the web image (`registry.gitlab.com/niharokz/mnemos:<version>` and `:latest`) and creates
-the release `v<version>` with both changelog sections and the asset `mnemos.apk`. This link
-always serves the newest APK (the about page uses it):
+The tag pipeline builds and signs the APK, checks it is signed and has no INTERNET
+permission, publishes the web image (`registry.gitlab.com/niharokz/mnemos:<version>` and
+`:latest`) and creates the release `v<version>` with both changelog sections and the asset
+`mnemos.apk`. This link always serves the newest APK (the about page uses it):
 
 ```
 https://gitlab.com/niharokz/mnemos/-/releases/permalink/latest/downloads/mnemos.apk
 ```
 
-**One-time setup** for the signing key, on GitLab under *Settings → CI/CD → Variables*
-(all **Protected**; the passwords also **Masked**):
-
-| Variable | Value |
-|---|---|
-| `MNEMOS_KEYSTORE_B64` | type **File**: the output of `base64 -w0 ~/.mnemos-keys/mnemos.jks` |
-| `MNEMOS_STORE_PASSWORD`, `MNEMOS_KEY_PASSWORD`, `MNEMOS_KEY_ALIAS` | from `~/.mnemos-keys/keystore.env` |
-
-and under *Settings → Repository → Protected tags* protect `v*`, so only maintainers can
-release and protected variables reach the tag pipeline. It must be the same key as before:
-phones only accept updates signed with the key they were installed with.
-
-Without CI, the same release can be made by hand: `cd android && ./build.sh && cd ..`, then
-`GITLAB_TOKEN=glpat-… sh scripts/release.sh` (token scope `api`; needs `curl` and `jq`).
+If a tag pipeline fails, fix, commit, push, and move the tag:
+`git tag -f v1.2.0 && git push -f origin v1.2.0`.
 
 ## Development
 

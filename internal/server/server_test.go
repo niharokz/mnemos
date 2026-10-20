@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gitlab.com/niharokz/mnemos/internal/auth"
+	"gitlab.com/niharokz/mnemos/internal/guard"
 	"gitlab.com/niharokz/mnemos/internal/httpx"
 	"gitlab.com/niharokz/mnemos/internal/vault"
 )
@@ -399,5 +400,42 @@ func TestFavicon(t *testing.T) {
 	code, _, hdr := e.do("GET", "/favicon.ico", "", false, false)
 	if code != 200 || hdr.Get("Content-Type") != "image/x-icon" {
 		t.Fatalf("favicon: %d %q", code, hdr.Get("Content-Type"))
+	}
+}
+
+func TestScannerAndBruteForceAreBanned(t *testing.T) {
+	dir := t.TempDir()
+	v, _ := vault.New(dir, ".trash", nil, 1<<20)
+	owner := &auth.Account{User: httpx.User{Name: "me", Vault: v}, Password: "pw"}
+	a := auth.New("secret", owner)
+	g := guard.New(guard.Options{MaxStrikes: 5, StateFile: filepath.Join(t.TempDir(), "bans.json")})
+	a.Guard = g
+	h := New(a, Options{Version: "test", Guard: g})
+	req := func(method, path, ip, body string) int {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.Header.Set("CF-Connecting-IP", ip)
+		r.Header.Set("X-Mnemos", "1")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	scanner := "203.0.113.77"
+	for _, p := range []string{"/.env", "/conf/.env", "/wp-admin/.env", "/.git/config", "/index.php"} {
+		if c := req("GET", p, scanner, ""); c != http.StatusNotFound {
+			t.Fatalf("%s: %d", p, c)
+		}
+	}
+	if c := req("GET", "/", scanner, ""); c != http.StatusForbidden {
+		t.Fatalf("scanner not banned: %d", c)
+	}
+	if c := req("GET", "/", "203.0.113.78", ""); c != http.StatusOK {
+		t.Fatalf("an innocent address was blocked: %d", c)
+	}
+	guesser := "198.51.100.4"
+	for i := 0; i < 5; i++ {
+		req("POST", "/api/login", guesser, `{"user":"me","password":"nope"}`)
+	}
+	if c := req("POST", "/api/login", guesser, `{"user":"me","password":"pw"}`); c != http.StatusForbidden {
+		t.Fatalf("guesser can still sign in after 5 failures: %d", c)
 	}
 }

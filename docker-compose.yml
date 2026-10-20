@@ -24,11 +24,17 @@ services:
       MNEMOS_DEMO: ${MNEMOS_DEMO:-true}
       MNEMOS_DEMO_USER: ${MNEMOS_DEMO_USER:-demouser}
       MNEMOS_DEMO_PASSWORD: ${MNEMOS_DEMO_PASSWORD:-demo}
+      # Ban an address for days after repeated failed sign-ins or scans for .env/.git/*.php
+      MNEMOS_BAN_AFTER: ${MNEMOS_BAN_AFTER:-5}
+      MNEMOS_BAN_DAYS: ${MNEMOS_BAN_DAYS:-7}
+      MNEMOS_BAN_PRIVATE: ${MNEMOS_BAN_PRIVATE:-false}
+      MNEMOS_STATE: /state
     volumes:
       - ${NOTE_PATH:?set NOTE_PATH in .env}:/notes
+      - mnemos-state:/state     # bans list (survives restarts and rebuilds)
     read_only: true
     tmpfs:
-      - /tmp:size=32m   # the demo user's sample vault is unpacked here at start
+      - /tmp:size=32m,mode=1777   # the demo user's sample vault is unpacked here at start (any user may write)
     cap_drop:
       - ALL
     security_opt:
@@ -43,6 +49,9 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  mnemos-state:
 
 networks:
   proxy:

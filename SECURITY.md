@@ -21,7 +21,7 @@ Only the latest release of each app is supported. Update the web app with
 See "Security notes" in `README.md` and "Security model" in `ARCHITECTURE.md`.
 In short: bcrypt passwords, signed `__Host-` session cookies bound to each account's
 password, a demo user that is read-only on the server and never sees your vault,
-per-IP login lockout, same-origin JSON writes with a custom header, paths confined to
+per-IP login lockout and multi-day bans for repeated failed sign-ins or scans for `.env`/`.git`/`*.php`, same-origin JSON writes with a custom header, paths confined to
 the notes folder, strict CSP and security headers, and a non-root, read-only,
 capability-free container that can only write to your notes.
 
@@ -37,5 +37,5 @@ The Android app has no INTERNET permission; see `android/README.md`.
 - Serve Mnemos only over HTTPS, behind a proxy you control, and do not publish
   its port: the login lockout trusts the client-IP headers your proxy sets.
 - The demo login is public on purpose. If you do not want a demo, set `MNEMOS_DEMO=false`.
-- Keep the Android signing key (`~/.mnemos-keys`) out of the repo and backed up;
+- Keep the Android signing key (`$KEYS_HOME/.mnemos-keys`, mode 700) out of the repo and backed up;
   `scripts/check-public.sh` refuses a push that tracks a keystore.

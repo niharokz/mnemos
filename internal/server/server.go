@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"gitlab.com/niharokz/mnemos/internal/auth"
+	"gitlab.com/niharokz/mnemos/internal/guard"
 	"gitlab.com/niharokz/mnemos/internal/httpx"
 	"gitlab.com/niharokz/mnemos/internal/search"
 	"gitlab.com/niharokz/mnemos/internal/vault"
@@ -28,9 +29,10 @@ import (
 type Options struct {
 	Version      string
 	AutosaveMS   int
-	CaptureNote  string // vault path quick capture appends to
-	TemplatesDir string // vault folder listed by "New from template"
-	MaxUploadMB  int    // largest image that can be added to a note
+	CaptureNote  string       // vault path quick capture appends to
+	TemplatesDir string       // vault folder listed by "New from template"
+	MaxUploadMB  int          // largest image that can be added to a note
+	Guard        *guard.Guard // bans IPs after repeated failures and scanner probes; nil = off
 }
 
 // Limits for the http.Server.
@@ -87,7 +89,11 @@ func New(a *auth.Auth, opt Options) http.Handler {
 		w.Write([]byte("User-agent: *\nAllow: /$\nDisallow: /app\nDisallow: /api/\nDisallow: /raw/\n"))
 	})
 	mux.HandleFunc("GET /", assets.serve)
-	return accessLog(headers(mux))
+	var h http.Handler = mux
+	if opt.Guard != nil {
+		h = opt.Guard.Middleware(auth.ClientIP, func(r *http.Request) bool { return a.Resolve(r) != nil }, mux)
+	}
+	return accessLog(headers(h))
 }
 
 // accessLog records every request that changes something, and every refusal of

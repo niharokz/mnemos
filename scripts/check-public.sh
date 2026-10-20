@@ -22,7 +22,7 @@ if git grep -nI -E "$pattern" -- . ':!.env.example' >/dev/null 2>&1; then
   echo "✗ something that looks like a real password or secret is committed:"
   git grep -nI -E "$pattern" -- . ':!.env.example'; fail=1
 fi
-# the Android signing key and its passwords live in ~/.mnemos-keys, never in the repo
+# the Android signing key and its passwords live in $KEYS_HOME/.mnemos-keys, never in the repo
 if git ls-files | grep -E '\.(jks|keystore|p12)$|(^|/)keystore\.env$' >/dev/null; then
   echo "✗ a signing key or keystore.env is tracked:"
   git ls-files | grep -E '\.(jks|keystore|p12)$|(^|/)keystore\.env$' | sed 's/^/    /'; fail=1

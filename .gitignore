@@ -4,6 +4,8 @@
 .private-words
 !.env.example
 /notes/
+# patches dropped in by hand (unzip -o patch/<name>.zip); never committed
+/patch/
 # build output
 /mnemos
 /bin/

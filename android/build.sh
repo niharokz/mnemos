@@ -5,10 +5,14 @@
 #   ./build.sh check      unit tests + lint (warnings are errors)
 #   ./build.sh profile    regenerate the Baseline Profile on a connected device
 #   ./build.sh install    install the built APK over USB with adb
+#   ./build.sh ci-secrets prepare the key for GitLab CI variables (README → Releasing)
 set -euo pipefail
 cd "$(dirname "$0")"
 
-KEY_DIR="${MNEMOS_KEY_DIR:-$HOME/.mnemos-keys}"
+# Signing keys live with your other app keys: $KEYS_HOME (set in ~/.zprofile), else
+# $XDG_DATA_HOME/keys, else ~/.local/share/keys. MNEMOS_KEY_DIR overrides the whole path.
+KEYS_ROOT="${KEYS_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/keys}"
+KEY_DIR="${MNEMOS_KEY_DIR:-$KEYS_ROOT/.mnemos-keys}"
 KEYSTORE="$KEY_DIR/mnemos.jks"
 # Passwords live next to the key, so re-extracting or replacing the repo never loses them.
 ENV_FILE="$KEY_DIR/keystore.env"
@@ -17,11 +21,20 @@ IMAGE="mnemos-build:$(sha256sum docker/Dockerfile | cut -c1-12)"
 VERSION="$(grep '^versionName=' version.properties | cut -d= -f2)"
 APK="dist/mnemos-$VERSION.apk"
 
-# One-time moves from the project's old name (Samanote): signing key folder and Gradle cache.
+# One-time moves: the old key folders (~/.mnemos-keys, ~/.samanote-keys) and the Gradle cache.
 migrate_old_name() {
-  if [ ! -d "$KEY_DIR" ] && [ -d "$HOME/.samanote-keys" ]; then
-    mv "$HOME/.samanote-keys" "$KEY_DIR"
-    echo "Moved signing key folder ~/.samanote-keys → $KEY_DIR"
+  local old
+  for old in "$HOME/.mnemos-keys" "$HOME/.samanote-keys"; do
+    if [ ! -d "$KEY_DIR" ] && [ -d "$old" ]; then
+      mkdir -p "$(dirname "$KEY_DIR")" && chmod 700 "$(dirname "$KEY_DIR")"
+      mv "$old" "$KEY_DIR"
+      echo "Moved signing key folder $old → $KEY_DIR"
+    fi
+  done
+  if [ -d "$KEY_DIR" ]; then
+    # only you may read the key and its passwords
+    chmod 700 "$KEY_DIR"
+    find "$KEY_DIR" -type f -exec chmod 600 {} +
   fi
   if ! docker volume inspect mnemos-gradle-cache >/dev/null 2>&1 && docker volume inspect samanote-gradle-cache >/dev/null 2>&1; then
     echo "Copying the Gradle cache from the old samanote volume (saves a re-download)…"
@@ -86,6 +99,20 @@ case "${1:-release}" in
       echo "ERROR: INTERNET permission found in the APK" >&2; exit 1
     fi
     echo "Checked: no INTERNET permission."
+    # Same check as CI: signed with the release key (prints its certificate digest).
+    docker run --rm -v "$PWD":/src "$IMAGE" sh -c "\$ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs /src/$APK" | grep -m1 'SHA-256' || true
+    sha256sum "$APK"
+    ;;
+  ci-secrets)
+    # Writes the keystore as one base64 line next to the key (mode 600) for the
+    # MNEMOS_KEYSTORE_B64 File variable, and shows where the passwords are.
+    load_keys
+    base64 -w0 "$KEYSTORE" > "$KEY_DIR/mnemos.jks.b64"
+    chmod 600 "$KEY_DIR/mnemos.jks.b64"
+    echo "GitLab → Settings → CI/CD → Variables (all Protected; passwords also Masked):"
+    echo "  MNEMOS_KEYSTORE_B64   type File, value = contents of $KEY_DIR/mnemos.jks.b64"
+    echo "  MNEMOS_STORE_PASSWORD, MNEMOS_KEY_PASSWORD, MNEMOS_KEY_ALIAS = the values in $ENV_FILE"
+    echo "Delete $KEY_DIR/mnemos.jks.b64 once the variable is saved."
     ;;
   check)
     gradle_in_docker check lint

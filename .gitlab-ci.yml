@@ -13,6 +13,7 @@
 #   Settings → Repository → Protected tags: v*
 #   Settings → CI/CD → Variables (protected, masked): MNEMOS_KEYSTORE_B64 (type File),
 #     MNEMOS_STORE_PASSWORD, MNEMOS_KEY_PASSWORD, MNEMOS_KEY_ALIAS
+#   (`cd android && ./build.sh ci-secrets` prepares them from the local key)
 
 stages: [prepare, check, build, release]
 

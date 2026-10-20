@@ -2,9 +2,16 @@
 
 This is the web app's changelog. The Android app has its own: [android/CHANGELOG.md](android/CHANGELOG.md).
 
+## Unreleased
+
+- **Bans.** 5 failed sign-ins or scanner probes (`/.env`, `/conf/.env`, `/.git/config`, `wp-admin`, `*.php` …) from one address within 24 hours ban it for 7 days: every request from it then gets `403`. Probes always get `404` and never reach the app; signed-in users are never struck, and LAN/loopback addresses are never banned unless `MNEMOS_BAN_PRIVATE=true`. Bans live in the new `mnemos-state` volume (`/state/bans.json`, mode 600) and survive restarts. `mnemos bans` lists them and `mnemos unban <ip>` lifts one without a restart. Settings: `MNEMOS_BAN_AFTER` (0 = off), `MNEMOS_BAN_DAYS`, `MNEMOS_BAN_PRIVATE`, `MNEMOS_STATE`.
+- Android: the signing key moved to `$KEYS_HOME/.mnemos-keys` (default `~/.local/share/keys/.mnemos-keys`); `build.sh` moves an old `~/.mnemos-keys` there and keeps the folder at 700 and its files at 600.
+- `./build.sh ci-secrets` prepares the local signing key for GitLab CI, and local release builds now print the signing certificate like CI does, so local and CI builds stay interchangeable. README → *Building and releasing* documents both ways and how to apply a patch zip from the gitignored `patch/` folder.
+
 ## 1.1.0 - 2026-10-14
 
-- No changes to the web app; the version moves with the Android app (rename notes from the editor — see [android/CHANGELOG.md](android/CHANGELOG.md)).
+- The version moves with the Android app (rename notes from the editor — see [android/CHANGELOG.md](android/CHANGELOG.md)).
+- **Fix:** the container no longer crash-loops with `demo vault: mkdir /tmp/mnemos-demo-…: permission denied`. The compose tmpfs for `/tmp` is now world-writable (`mode=1777`), the image ships a writable `/tmp`, and if the demo vault still can't be unpacked Mnemos logs a warning and starts without the demo user.
 
 ## 1.0.1 - 2026-10-13
 

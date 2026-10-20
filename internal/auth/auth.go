@@ -31,6 +31,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"gitlab.com/niharokz/mnemos/internal/guard"
 	"gitlab.com/niharokz/mnemos/internal/httpx"
 )
 
@@ -66,6 +67,9 @@ type Auth struct {
 	limiter  *limiter
 	now      func() time.Time
 	dummy    *Account // compared against for unknown users, so timing reveals nothing
+	// Guard, when set, gets a strike for every failed sign-in, so repeated failures
+	// ban the IP for days (see package guard). The 15-minute limiter still applies.
+	Guard *guard.Guard
 }
 
 // New builds an Auth. An empty secret gets a random one (sessions end on restart).
@@ -241,11 +245,19 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 	if ac == nil {
 		n := a.limiter.fail(ip)
 		log.Printf("login: failed sign-in from %s (%d of %d)", ip, n, MaxFails)
+		if a.Guard != nil && a.Guard.Strike(ip, "failed sign-in") {
+			time.Sleep(time.Second)
+			httpx.Error(w, http.StatusForbidden, "too many failed sign-ins — this address is blocked")
+			return
+		}
 		time.Sleep(time.Duration(300+100*n) * time.Millisecond) // blunt brute force a little more
 		httpx.Error(w, http.StatusUnauthorized, "wrong user name or password")
 		return
 	}
 	a.limiter.reset(ip)
+	if a.Guard != nil {
+		a.Guard.Forget(ip)
+	}
 	log.Printf("login: %s signed in from %s", ac.User.Name, ip)
 	name := CookieName
 	if Secure(r) {
