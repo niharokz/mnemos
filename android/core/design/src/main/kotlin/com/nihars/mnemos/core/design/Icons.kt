@@ -117,6 +117,9 @@ object NssIcons {
     val Replace by lazy { icon("replace", "M14 4h6v6", "M20 4l-7 7", "M10 20H4v-6", "M4 20l7-7") }
     val Backspace by lazy { icon("backspace", "M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z", "M18 9l-6 6", "M12 9l6 6") }
     val Columns by lazy { icon("columns", "M3 3h18v18H3z", "M9 3v18", "M15 3v18") }
+    // a card with a stack behind it: Flow, one note at a time
+    val Flow by lazy { icon("flow", "M6 3h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M8 21h8", "M9 8h6", "M9 12h4") }
+    val Broom by lazy { icon("broom", "M19 3 11 11", "M6.5 11.5l6 6", "M4 20c2-1 3-3 3.5-6.5L11 10l3 3-3.5 3.5C7 17 5 18 4 20z") }
     val Rows by lazy { icon("rows", "M3 3h18v18H3z", "M3 9h18", "M3 15h18") }
     val Grid by lazy { icon("grid", "M3 3h7v7H3z", "M14 3h7v7h-7z", "M14 14h7v7h-7z", "M3 14h7v7H3z") }
     val Tabs by lazy { icon("tabs", "M3 8h18v12H3z", "M3 8V4h7v4", "M10 8V5h6v3") }

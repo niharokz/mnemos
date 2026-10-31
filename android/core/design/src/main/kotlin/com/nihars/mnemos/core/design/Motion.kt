@@ -22,10 +22,10 @@ import androidx.compose.ui.unit.IntOffset
 
 /** Spec §9.3 durations and easings. */
 object MotionTokens {
-    // A little longer than Material's defaults: calmer, but never sluggish.
-    const val SHORT = 180
-    const val MEDIUM = 340
-    const val LONG = 480
+    // Quick and smooth: close to Material's defaults, so moving around feels instant.
+    const val SHORT = 150
+    const val MEDIUM = 260
+    const val LONG = 360
     val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
     val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
     val Standard = CubicBezierEasing(0.2f, 0f, 0f, 1f)

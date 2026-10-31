@@ -13,6 +13,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
+import android.graphics.text.LineBreaker
 
 /**
  * The editor surface: a platform EditText (fast on large files) with undo history, markdown
@@ -52,7 +53,7 @@ class NoteEditText(context: Context) : EditText(context) {
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
         imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN
         // Simple line breaking is much cheaper on big files than the default high-quality strategy.
-        breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
+        breakStrategy = LineBreaker.BREAK_STRATEGY_SIMPLE
         hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
         isVerticalScrollBarEnabled = true
         addTextChangedListener(object : TextWatcher {

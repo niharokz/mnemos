@@ -19,7 +19,8 @@ app ─────────────┬─► feature:signin    welcome, 
                            │
                            ▼
                       core:data  AppGraph, VaultSession, settings (DataStore), SAF VaultFs, watcher,
-                           │      capture, trash ledger, demo vault, FileKind, Open with
+                           │      capture, trash ledger, cleanup, demo vault, FileKind, Open with,
+                           │      remote/ (ServerClient + RemoteVaultFs: server mode)
      ┌──────────┬─────────┼───────────┬───────────┬──────────┐
  core:text  core:csv  core:vaultfs  core:markdown  core:index  core:security  core:design
  (JVM)      (JVM)     (JVM)         (JVM)          (SQLite)   (PIN, Keystore) (nss × M3, motion, icons)
@@ -44,6 +45,26 @@ so switching users (or resetting the demo) builds fresh screens.
 The lock (`LockManager`) is separate from the session: locking does not close the vault. When the
 owner is locked, `AppRoot` draws the PIN pad over the app, so open editors keep their state and
 autosave runs on lock.
+
+## Where the vault lives
+
+`AppGraph.ownerFs()` picks one `VaultFs` from the saved location:
+
+| Mode | `VaultFs` | Notes |
+|---|---|---|
+| Phone folder (All files access) | `NioVaultFs` | java.nio, atomic saves, `FileObserver` watcher |
+| Phone folder (picker only) | `SafVaultFs` | "slower mode", saves in place |
+| Your Mnemos server | `RemoteVaultFs` | the web app's API over https (`ServerClient`, `HttpURLConnection` + `org.json`) |
+
+`RemoteVaultFs` keeps an app-private cache per server (`files/server/<host>/`: the last tree,
+the files you opened with their server versions, and a queue of unsent edits). Reads come from
+the cache when the server still has the same version. A save is sent with its base version, so
+the server's own version check applies; offline, it is queued. `AppGraph` syncs every 30 s while
+the session is open (send the queue, fetch the tree) and reports what changed through
+`VaultSession.externalChange`, so tree, index and widgets refresh as with a watcher. A queued
+edit whose note changed on the server meanwhile is written as a `(conflict …)` copy — never
+over the server's text. Only the session cookie is stored, never the password; the demo
+account is refused (it is read-only on the server). Trash and Cleanup go to the server.
 
 ## Data flow
 
@@ -74,10 +95,12 @@ live text for speed, and the ViewModel only reads it (`toString()`) when saving 
   Files that mix LF and CRLF are unified on the first save that changes them.
 - **CSV.** Parsed without newline normalising. Each record keeps its exact source text and is
   re-serialised only if edited, so open → save is byte-identical and a one-cell edit changes one row.
-- **Delete.** Never. Files and folders move to `.trash/` (flat, ` 2`, ` 3`… on clashes). The
-  original location is remembered app-private (`trash-<user>.tsv`) so Restore can put it back.
+- **Delete.** Files and folders move to `.trash/` (flat, ` 2`, ` 3`… on clashes). The original
+  location and the time are remembered app-private (`trash-<user>.tsv`) so Restore can put it
+  back and Cleanup can age it. Only Settings → Cleanup erases, only inside `.trash/`
+  (`VaultFs.deleteForever`), and only when the user presses it after a preview.
 - **Paths.** Normalised, `..` rejected, symlinks resolved and required to stay inside the vault.
-  Hidden folders are never written, except `.trash/`. There is no delete API at all.
+  Hidden folders are never written, except `.trash/`.
 - **Sync conflicts.** `name.sync-conflict-YYYYMMDD-HHMMSS-XXXXXXX.ext` is grouped with
   `name.ext`; resolving moves the loser to the trash.
 - **Pictures.** `Attachments` (core:data, pure and unit tested) mirrors the web app's
@@ -155,7 +178,9 @@ content, size and extension.
 
 ## Security
 
-No `INTERNET`, no WebView, `allowBackup=false` plus data-extraction rules that exclude everything,
+`INTERNET` is used only by server mode, to the one https server the user signed in to
+(cleartext is refused by the platform default); a phone-folder vault makes no requests. No
+WebView, `allowBackup=false` plus data-extraction rules that exclude everything,
 `FLAG_SECURE` on by default. PIN: PBKDF2-HMAC-SHA256, 16-byte random salt, iterations calibrated
 to ~250 ms (minimum 100 000), constant-time compare, 30 s cooldown from the 5th wrong try,
 doubling to 15 min and surviving restarts. Fingerprint: `BIOMETRIC_STRONG` with an AES key that
@@ -203,7 +228,7 @@ unlock the key (`doFinal`). Logs carry counts, timings and vault-relative paths 
   scraped from the dependency graph.
 - **Front matter** is split and parsed by our own small YAML-subset reader (display and search
   only, never rewritten) instead of commonmark's front-matter extension.
-- **Baseline Profile.** A hand-written starter profile ships in `app/src/main/baseline-prof.txt`;
-  run `./build.sh profile` on a device to replace it with a measured one.
+- **Baseline Profile.** A hand-written profile ships in `app/src/main/baseline-prof.txt` and is
+  installed by `profileinstaller` (sideloaded apps get no cloud profiles).
 - **SAF mode** saves in place (truncate + write + fsync); the picker API cannot rename over a file.
 - **Androidx Fragment** is an extra dependency because `BiometricPrompt` needs a `FragmentActivity`.

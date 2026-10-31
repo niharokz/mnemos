@@ -8,4 +8,6 @@
     <!-- All files access is the core storage decision (spec §1); Play policy does not apply to a sideloaded APK. -->
     <issue id="ScopedStorage" severity="ignore" />
     <issue id="QueryAllPackagesPermission" severity="ignore" />
+    <!-- Only affects Android 4.3 and older; the app needs Android 12 (minSdk 31). -->
+    <issue id="TrulyRandom" severity="ignore" />
 </lint>

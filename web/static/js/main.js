@@ -1,7 +1,8 @@
 // main.js — mnemos's app logic: sign-in, routing, opening files, autosave with
 // conflict handling, views (edit / split / preview or table), the sidebar and every
 // file action. Routes:
-//   #/n/<path>  a file        #/f/<path>  a folder as cards
+//   #/n/<path>  a file        #/f/<path>  a folder as boxes
+//   #/l/<path>  a folder as Flow (one note at a time)
 //   #/c/<copy>  a sync conflict compared with its original
 // Server rules this relies on:
 //   • a save carries the version it was based on; 409 = changed elsewhere
@@ -16,6 +17,8 @@ import { Editor } from "./editor.js";
 import { Preview } from "./preview.js";
 import { Table } from "./table.js";
 import { renderFolder } from "./cards.js";
+import { renderFlow, stopFlow } from "./flow.js";
+import { settingsSheet, statsLine } from "./settings.js";
 import { pickImages, uploadImages } from "./images.js";
 import { searchSheet, recentSheet, trashSheet, captureSheet, pickTemplate, conflictsSheet, renderConflict } from "./panels.js";
 
@@ -38,7 +41,7 @@ const doc = {
   kind: "md",      // md | csv | log | text
 };
 
-let mode = "welcome"; // welcome | note | folder | diff
+let mode = "welcome"; // welcome | note | folder | flow | diff
 let tree, editor, preview, table, autosaveTimer, followTimer, tableTimer, pendingLine = 0, started = false;
 
 // per-user settings (the owner and the demo may share a browser)
@@ -51,13 +54,14 @@ const upref = {
 const enc = (p) => p.split("/").map(encodeURIComponent).join("/");
 const noteHash = (p) => "#/n/" + enc(p);
 function parseHash() {
-  const m = location.hash.match(/^#\/([nfc])\/(.*)$/);
+  const m = location.hash.match(/^#\/([nflc])\/(.*)$/);
   if (!m) return { kind: "", path: "" };
   try { return { kind: m[1], path: m[2].split("/").map(decodeURIComponent).join("/") }; } catch { return { kind: "", path: "" }; }
 }
 const go = (p) => { location.hash = p ? noteHash(p) : "#/"; };
 const goFolder = (p) => { location.hash = "#/f/" + enc(p); };
 const goConflict = (c) => { location.hash = "#/c/" + enc(c); };
+const goFlow = (p) => { location.hash = "#/l/" + enc(p); };
 const replaceHash = (p) => history.replaceState(null, "", p ? noteHash(p) : "#/");
 const dirOf = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
 const baseOf = (p) => p.slice(p.lastIndexOf("/") + 1);
@@ -79,6 +83,7 @@ async function route() {
   const r = parseHash();
   if (r.kind === "n" && r.path === doc.path && mode === "note") return;
   if (r.kind === "f") { await showFolder(r.path); return; }
+  if (r.kind === "l") { await showFlow(r.path); return; }
   if (r.kind === "c") { await showDiff(r.path); return; }
   await openNote(r.kind === "n" ? r.path : "");
 }
@@ -152,6 +157,8 @@ function show(section) {
   mode = section;
   $("panes").hidden = section !== "note";
   $("folder").hidden = section !== "folder";
+  $("flow").hidden = section !== "flow";
+  if (section !== "flow") stopFlow();
   $("diff").hidden = section !== "diff";
   $("welcome").hidden = section !== "welcome";
   $("note-menu").hidden = section !== "note";
@@ -249,6 +256,16 @@ async function showFolder(p) {
   tree.setActive("");
   closeDrawer();
   await renderFolder($("folder"), p, { folder: goFolder, note: (n) => go(n) });
+}
+
+async function showFlow(p) {
+  if (!(await leaveCurrent())) { history.replaceState(null, "", currentHash()); return; }
+  closeFile();
+  show("flow");
+  setCrumb(p || "vault", "Flow · " + (p ? baseOf(p) : "vault"));
+  tree.setActive("");
+  closeDrawer();
+  renderFlow($("flow"), p, { files: () => tree.files(), note: (n) => go(n), folder: goFolder });
 }
 
 async function showDiff(copy) {
@@ -444,6 +461,11 @@ function stopFollow() {
 }
 
 // ── tree and file actions ────────────────────────────────────────────────────
+/** Notes and storage under the sidebar ("1,284 notes · 312.4 MB"). */
+async function refreshStats() {
+  $("stats").textContent = await statsLine();
+}
+
 async function loadTree() {
   try {
     tree.set(await api.tree());
@@ -653,6 +675,7 @@ const ctx = {
   open: openAt,
   openConflict: goConflict,
   loadTree: () => loadTree(),
+  refreshStats: () => refreshStats(),
   recent: () => upref.get("recent", []),
   captured: (path) => { if (path === doc.path && !doc.dirty) checkExternal({ quiet: true }); },
 };
@@ -719,9 +742,12 @@ async function start() {
   $("welcome-new").onclick = () => newNote("");
   $("welcome-search").onclick = () => searchSheet(ctx);
   $("welcome-cards").onclick = () => goFolder("");
+  $("welcome-flow").onclick = () => goFlow("");
   $("nav-search").onclick = () => { closeDrawer(); searchSheet(ctx); };
   $("nav-recent").onclick = () => { closeDrawer(); recentSheet(ctx); };
   $("nav-cards").onclick = () => goFolder(doc.path ? dirOf(doc.path) : "");
+  $("nav-flow").onclick = () => goFlow(doc.path ? dirOf(doc.path) : "");
+  $("nav-settings").onclick = () => { closeDrawer(); settingsSheet(ctx); };
   $("nav-conflicts").onclick = () => { closeDrawer(); conflictsSheet(ctx); };
   $("nav-trash").onclick = () => { closeDrawer(); trashSheet(ctx); };
   $("nav-capture").onclick = () => { closeDrawer(); captureSheet(ctx); };
@@ -792,6 +818,7 @@ async function start() {
   window.addEventListener("hashchange", route);
 
   await loadTree();
+  refreshStats();
 
   // shared from another app (installed PWA share target): /app?title=…&text=…&url=…
   const q = new URLSearchParams(location.search);

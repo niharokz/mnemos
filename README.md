@@ -1,5 +1,9 @@
 # Mnemos
 
+[![pipeline](https://gitlab.com/niharokz/mnemos/badges/main/pipeline.svg)](https://gitlab.com/niharokz/mnemos/-/pipelines)
+[![release](https://gitlab.com/niharokz/mnemos/-/badges/release.svg)](https://gitlab.com/niharokz/mnemos/-/releases)
+[![Android APK](https://img.shields.io/badge/Android-APK-3a807a)](https://gitlab.com/niharokz/mnemos/-/releases/permalink/latest/downloads/mnemos.apk)
+
 **Your notes folder, on the web and on Android** — for example the vault you also open in
 Obsidian and keep in sync with Syncthing. Plain files in, plain files out.
 
@@ -8,13 +12,15 @@ This repository holds both apps:
 | | Where | What |
 |---|---|---|
 | **Mnemos web** | `cmd/`, `internal/`, `web/` | A self-hosted Go server with the web app built in: markdown with live preview, CSV tables, one search box, capture, sync-conflict merge, trash with restore, and a read-only demo user. |
-| **Mnemos for Android** | [`android/`](android/README.md) | A native, fully offline app (no INTERNET permission) for the same folder on your phone. |
+| **Mnemos for Android** | [`android/`](android/README.md) | A native app in two modes: **server** (sign in to your Mnemos, works offline and syncs back) or **phone folder** (the folder Syncthing keeps, no network at all). |
 
 Both follow the same file rules: atomic saves with a version check, line endings kept,
 unchanged files never rewritten, delete = move to the vault's `.trash/`. The look is
 [nss](https://gitlab.com/niharokz/nss) everywhere.
 
-`/` is a public about page with install steps for both apps; the web app is at `/app`.
+The web app is always online: it edits the notes folder of the server it runs on. To keep
+your own notes, run your own server (below). `/` is a public home page with the Android
+download and the sign-in; the web app is at `/app`.
 
 ---
 
@@ -22,7 +28,8 @@ unchanged files never rewritten, delete = move to the vault's `.trash/`. The loo
 
 | Area | What you get |
 |---|---|
-| Files | Folder tree (open folders remembered), filter box, pinned files, recent files, a folder as **cards** with note previews, new note / folder / note from template, rename and move (never overwrites), download, open raw. |
+| Files | Folder tree (open folders remembered), filter box, pinned files, recent files, new note / folder / note from template, rename and move (never overwrites), download, open raw. The vault's note count and size sit under the tree. |
+| Views | **List** (compact rows), **Box** (cards with note previews and thumbnails), **Tabs** (one tab per open note) and **Flow** — every note, newest first, one per screen: scroll or `↑`/`↓` (`j`/`k`) to the next, `Enter` to open. |
 | Markdown | CodeMirror 6 editor: highlighting, formatting bar (`Ctrl+B/I/K`), find and replace, list continuation, undo. Edit / Split / Preview; task boxes can be ticked in the preview. CommonMark + tables, task lists, footnotes, properties; images from the vault; links to other notes open them. |
 | Images | Paste, drop or pick (🖼 in the formatting bar) images into a note: they are saved in `attachments/` next to the note and linked as `![name](attachments/name.png)`. Obsidian embeds (`![[photo.png]]`, `![[photo.png\|300]]`) show too. Tap an image for full screen; image files open in a viewer; folder cards show thumbnails. |
 | CSV / TSV | A real table: sticky header, view-only sort and filter, cell editing, add / delete rows, column stats. Saving after no edits is byte-identical; a one-cell edit rewrites only that row. |
@@ -30,7 +37,8 @@ unchanged files never rewritten, delete = move to the vault's `.trash/`. The loo
 | Search | `Ctrl+K`: file names (fuzzy), full text, `#tags` (body and front matter) and properties (`status: open`). Results jump to the line. In-memory, nothing written to the vault. |
 | Capture | `Alt+C` (or the PWA share target / home-screen shortcut) appends `- YYYY-MM-DD HH:mm text` to `inbox/note.md`. |
 | Conflicts | Live edits from other apps: **Load theirs / Keep mine / Save mine as copy**. Syncthing `*.sync-conflict-*` copies: listed with a count, compared side by side, **Keep original / Keep copy / Merge by hand** — the loser goes to `.trash`. |
-| Trash | Lists `.trash/` and restores to the original path (Mnemos records where each file came from in `.trash/.mnemos-trash.tsv`). |
+| Trash | Lists `.trash/` and restores to the original path (Mnemos records where each file came from, and when, in `.trash/.mnemos-trash.tsv`). |
+| Cleanup | Settings → **Clean up now** (only when you press it): Syncthing `*sync-conflict*` copies move to the trash, then trash items older than *N* days (default 30, set there) are erased. Preview first; the demo can't. |
 | Users | Your account (read-write, your vault) and an optional **demo user** (read-only, a built-in sample vault, credentials shown on the sign-in card). |
 | Layout | Desktop: resizable sidebar and split. Phone: drawer, panes take turns. Light / dark. Installable, with shortcuts and a share target. |
 
@@ -58,7 +66,7 @@ Set the rest of `.env` — `MNEMOS_USER`, `NOTE_PATH`, `PUID`/`PGID` (from `id -
 ```sh
 docker compose run --rm mnemos check     # settings + any note or folder it cannot write
 docker compose up -d
-docker logs mnemos                       # "mnemos 1.0.0 listening on :8080 …"
+docker logs mnemos                       # "mnemos <version> listening on :8080 …"
 ```
 
 The compose file publishes no port; point your proxy at `mnemos:8080`. With Caddy:
@@ -73,14 +81,6 @@ Open the site, sign in, and use your browser's **Install / Add to Home Screen**.
 For a quick local try without a proxy, add `ports: ["127.0.0.1:8080:8080"]` to the service.
 
 **Update:** `git pull && docker compose up -d --build`.
-
-### Moving from Samanote
-
-Mnemos replaces Samanote (same file rules, same layout). Every `SAMANOTE_X` setting still
-works as a fallback for `MNEMOS_X` — in `docker-compose.yml` and in the binary — and the log
-names each old key in use. Stop the old container, start this one, change the proxy target
-from `samanote:8080` to `mnemos:8080`, and rename the variables when convenient. Sign in
-once more (the cookie name changed).
 
 ### File ownership
 
@@ -103,6 +103,7 @@ renaming or trashing there needs the folder fixed.
 | `MNEMOS_PASSWORD` | app | A bcrypt hash from `mnemos hash-password` (plain text works, with a warning). Placeholders like `change-me` refuse to start. |
 | `MNEMOS_SECRET` | app | Signs session cookies, 32+ characters (`openssl rand -hex 32`). Empty → everyone is signed out on every restart. |
 | `MNEMOS_HIDDEN` | app | Extra names or vault paths to hide, comma separated. Dot entries (`.obsidian`, `.trash`, `.git` …) are always hidden. |
+| `MNEMOS_TRASH` | app | Trash folder in the vault, default `.trash` (the one Obsidian uses). |
 | `MNEMOS_AUTOSAVE_MS` | app | Autosave delay, default `1000`. |
 | `MNEMOS_MAX_FILE_MB` | app | Bigger files open read-only, default `5`. |
 | `MNEMOS_MAX_UPLOAD_MB` | app | Largest image that can be added to a note, default `20`. |
@@ -110,9 +111,12 @@ renaming or trashing there needs the folder fixed.
 | `MNEMOS_TEMPLATES` | app | Folder listed by "New from template", default `templates`. `{{date}}`, `{{time}}`, `{{title}}` are filled in. |
 | `MNEMOS_DEMO` | app | `false` turns the demo user off (default on). |
 | `MNEMOS_DEMO_USER`, `MNEMOS_DEMO_PASSWORD` | app | Demo login, default `demouser` / `demo`. Shown on the sign-in card on purpose. |
+| `MNEMOS_BAN_AFTER`, `MNEMOS_BAN_DAYS`, `MNEMOS_BAN_PRIVATE` | app | Failed sign-ins or scanner probes in 24 h before a ban (default `5`, `0` = off), ban length (default `7` days), and whether LAN addresses can be banned (default `false`). |
+| `MNEMOS_APK_URL` | app | The home page's Android download, default the newest GitLab release. |
 
-Only `TZ` and the `MNEMOS_*` (or old `SAMANOTE_*`) variables are passed into the
-container, so a `.env` shared with other apps is fine.
+Only `TZ` and the `MNEMOS_*` variables are passed into the container, so a `.env` shared
+with other apps is fine. Server state (bans, the cleanup setting) lives in the
+`mnemos-state` volume, never in your notes.
 
 ### The demo user
 
@@ -170,14 +174,17 @@ A `.env` file in the working directory is read too (real environment variables w
 
 ## The Android app
 
-Everything about it — features, build, signing, offline updates — is in
-[android/README.md](android/README.md). In short:
+Download the newest APK from the home page or
+[GitLab releases](https://gitlab.com/niharokz/mnemos/-/releases/permalink/latest/downloads/mnemos.apk).
+At setup (or later, Settings → Vault → Storage) pick one:
 
-```sh
-cd android
-./build.sh keystore      # once: signing key in $KEYS_HOME/.mnemos-keys (back it up)
-./build.sh               # → android/dist/mnemos-<version>.apk
-```
+- **Your Mnemos server** — `https://` address, user and password. The phone keeps a copy of
+  what you open and queues edits made offline; they are sent when the network is back, and a
+  note that changed on the server meanwhile is kept as a `(conflict …)` copy, never
+  overwritten. The demo account can't be used here.
+- **A folder on the phone** — e.g. the one Syncthing keeps. No network at all.
+
+Everything else — features, widgets, build, signing — is in [android/README.md](android/README.md).
 
 ## Building and releasing
 
@@ -185,10 +192,6 @@ Both apps share one version: `VERSION` (embedded in the web binary) and
 `android/version.properties` (`versionName`, plus a `versionCode` that goes up by one each
 release). `sh scripts/check-version.sh` checks they agree and that both changelogs have a
 `## <version>` section.
-
-Everything below can be done **locally** (on nimory, with Docker) or by **GitLab CI**; both
-use the same build image (`android/docker/Dockerfile`) and the same signing key, so an APK
-from either installs over the other.
 
 ### Locally
 
@@ -204,22 +207,15 @@ docker logs mnemos            # "mnemos <version> listening on :8080 …" and th
 ```sh
 cd android
 ./build.sh keystore           # once: key + passwords in $KEYS_HOME/.mnemos-keys (back it up)
-./build.sh check              # unit tests + lint, as CI runs them
+./build.sh check              # unit tests + lint
 ./build.sh                    # signed APK → android/dist/mnemos-<version>.apk
 ./build.sh install            # adb install over USB (optional)
 ```
 
-The key folder is `$KEYS_HOME/.mnemos-keys` (from `~/.zprofile`; default
-`~/.local/share/keys/.mnemos-keys`); `MNEMOS_KEY_DIR` overrides it. `build.sh` keeps it at
-mode 700 and its files at 600, and moves an old `~/.mnemos-keys` there once.
-
-**Publishing a local build** as the GitLab release (same result as the tag pipeline):
-
-```sh
-sh scripts/check-version.sh
-git tag v1.1.0 && git push origin main v1.1.0      # skip if CI should do the release instead
-GITLAB_TOKEN=glpat-… sh scripts/release.sh         # token scope api; needs curl and jq
-```
+The key folder is `$KEYS_HOME/.mnemos-keys` (default `~/.local/share/keys/.mnemos-keys`);
+`MNEMOS_KEY_DIR` overrides it. `build.sh` keeps it at mode 700 and its files at 600. The
+release runner uses the same key and the same build, so a local APK and a released one
+install over each other.
 
 ### Applying a patch
 
@@ -227,57 +223,58 @@ Fixes that arrive as a zip go in `patch/` (gitignored, so it is never committed)
 in the zip start at the repo root:
 
 ```sh
-cd /home/datar/docker/mnemos
+cd /path/to/mnemos
 unzip -o patch/<name>.zip      # -o overwrites without asking (lowercase o)
 git status && git diff --stat  # review what changed
 docker compose up -d --build   # web app; for Android: cd android && ./build.sh
 git checkout -- . && git clean -fd -e patch   # undo, if needed
 ```
 
-### With GitLab CI
+### Releases and the Android APK
 
-`.gitlab-ci.yml` checks every merge request and push to `main`: Go vet/tests/format,
-front-end syntax, versions, no committed secrets, the Docker build and — when `android/`
-changed — the Android unit tests and lint (every lint problem is printed in the job log; the
-full report is in the job's artifacts).
-
-**One-time setup** (the same key as your local builds — phones only accept updates signed
-with the key they were installed with):
+A release is a tag:
 
 ```sh
-cd android && ./build.sh ci-secrets   # writes $KEYS_HOME/.mnemos-keys/mnemos.jks.b64
-```
-
-then on GitLab, *Settings → CI/CD → Variables*, all **Protected**, the passwords also **Masked**:
-
-| Variable | Value |
-|---|---|
-| `MNEMOS_KEYSTORE_B64` | type **File**: the contents of `mnemos.jks.b64` (delete that file afterwards) |
-| `MNEMOS_STORE_PASSWORD`, `MNEMOS_KEY_PASSWORD`, `MNEMOS_KEY_ALIAS` | the values in `$KEYS_HOME/.mnemos-keys/keystore.env` |
-
-and *Settings → Repository → Protected tags*: protect `v*`, so only maintainers can release
-and the protected variables reach tag pipelines.
-
-**Releasing** is pushing a tag:
-
-```sh
-# bump VERSION + android/version.properties (versionCode +1), add both changelog sections
+# bump VERSION + android/version.properties (versionCode +1), write both changelog sections
 sh scripts/check-version.sh
 git commit -am "Mnemos 1.2.0" && git push
 git tag v1.2.0 && git push origin v1.2.0
 ```
 
-The tag pipeline builds and signs the APK, checks it is signed and has no INTERNET
-permission, publishes the web image (`registry.gitlab.com/niharokz/mnemos:<version>` and
-`:latest`) and creates the release `v<version>` with both changelog sections and the asset
-`mnemos.apk`. This link always serves the newest APK (the about page uses it):
+GitLab CI ([.gitlab-ci.yml](.gitlab-ci.yml)) checks every push and merge request on shared
+runners (Go format/vet/tests, front-end syntax, versions, no committed secrets, the Docker
+build). A tag then builds the signed APK on **your own runner** — so it uses none of the free
+tier's CI minutes and the signing key never leaves your server — uploads it to the project's
+package registry, pushes the web image (`registry.gitlab.com/niharokz/mnemos:<version>` and
+`:latest`) and creates the release with that version's changelog sections. The newest APK
+is always at
 
 ```
 https://gitlab.com/niharokz/mnemos/-/releases/permalink/latest/downloads/mnemos.apk
 ```
 
-If a tag pipeline fails, fix, commit, push, and move the tag:
+and the home page links there (`MNEMOS_APK_URL`). A tag that does not match `VERSION`, or a
+version without a changelog section, fails the pipeline. To redo a failed tag: fix, push,
 `git tag -f v1.2.0 && git push -f origin v1.2.0`.
+
+Set up the runner once, on the machine that holds the signing key and Docker:
+
+1. Install [GitLab Runner](https://docs.gitlab.com/runner/install/linux-repository/) and let it
+   run as **your user** (it needs Docker and `$KEYS_HOME/.mnemos-keys`):
+   `sudo gitlab-runner uninstall && sudo gitlab-runner install --user "$USER" --working-directory "$HOME/.gitlab-runner" && sudo gitlab-runner start`.
+2. GitLab → the project → **Settings → CI/CD → Runners → New project runner**: tag
+   `mnemos-apk`, untick "Run untagged jobs". Copy the token, then
+   `sudo gitlab-runner register --url https://gitlab.com --token <token> --executor shell`.
+3. The runner does not read `~/.zprofile`: if your keys are not in
+   `~/.local/share/keys`, add `environment = ["MNEMOS_KEY_DIR=/path/to/keys/.mnemos-keys"]`
+   to the runner's section in `~/.gitlab-runner/config.toml` (or `/etc/gitlab-runner/config.toml`).
+4. *Settings → Repository → Protected tags*: protect `v*`, so only you can release.
+
+The first release build makes the Docker build image and fills the Gradle cache (a few GB,
+kept in the `mnemos-gradle-cache` volume); later ones take a few minutes.
+
+Issues and merge requests have templates (`.gitlab/`): bug, feature, and a merge request
+checklist.
 
 ## Development
 

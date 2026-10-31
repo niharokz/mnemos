@@ -106,12 +106,18 @@ fun SignInScreen(
             BrandMark()
             Spacer(Modifier.height(8.dp))
             Text(
-                if (state.name.isNotEmpty()) "Welcome back, ${state.name}" else "Your notes, offline, in plain files",
+                if (state.name.isNotEmpty()) "Welcome back, ${state.name}" else "Your notes, in plain files",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Nss.colors.muted,
             )
             Spacer(Modifier.height(32.dp))
-            AnimatedContent(state.phase, transitionSpec = { motion.sharedAxisX(targetState == SignInPhase.PIN) }, label = "signin") { phase ->
+            AnimatedContent(
+                state.phase,
+                Modifier.fillMaxWidth(),
+                transitionSpec = { motion.sharedAxisX(targetState == SignInPhase.PIN) },
+                contentAlignment = Alignment.TopCenter,
+                label = "signin",
+            ) { phase ->
                 when (phase) {
                     SignInPhase.CHOOSE -> Choices(
                         busy = state.busy,
@@ -187,7 +193,7 @@ private fun PinPad(
     // Success: dots shrink into the cursor before the reveal.
     val collapse = remember { Animatable(1f) }
     LaunchedEffect(state.success) { if (state.success && motion.full) collapse.animateTo(0f, tween(220)) }
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(if (state.usePassword) "Enter your password" else "Enter your PIN", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(20.dp))
         if (state.usePassword) {
@@ -251,7 +257,8 @@ private fun Keypad(
     onFingerprint: () -> Unit,
 ) {
     val rows = listOf("123", "456", "789")
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    // centred as one block: every row is the same three 72 dp keys wide
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         for (r in rows) {
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) { r.forEach { d -> Key(d.toString(), enabled) { onDigit(d) } } }
         }
@@ -263,7 +270,7 @@ private fun Keypad(
             }
         }
         if (showFingerprint) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { IconKey(NssIcons.Backspace, "Delete", enabled, onBackspace) }
+            IconKey(NssIcons.Backspace, "Delete", enabled, onBackspace)
         }
     }
 }

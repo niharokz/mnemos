@@ -49,10 +49,14 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.nihars.mnemos.core.data.AppGraph
 import com.nihars.mnemos.core.data.FileKind
+import com.nihars.mnemos.core.data.Format
+import com.nihars.mnemos.core.data.remote.RemoteStatus
+import com.nihars.mnemos.core.data.remote.RemoteVaultFs
 import com.nihars.mnemos.core.data.FileKinds
 import com.nihars.mnemos.core.data.LocalAppGraph
 import com.nihars.mnemos.core.data.UserKind
@@ -71,6 +75,7 @@ import com.nihars.mnemos.core.security.LockState
 import com.nihars.mnemos.core.vaultfs.ConflictFiles
 import com.nihars.mnemos.feature.conflicts.ConflictScreen
 import com.nihars.mnemos.feature.editor.EditorScreen
+import com.nihars.mnemos.feature.editor.NoteFlow
 import com.nihars.mnemos.feature.recent.RecentScreen
 import com.nihars.mnemos.feature.search.SearchScreen
 import com.nihars.mnemos.feature.settings.SettingsScreen
@@ -141,6 +146,15 @@ fun AppRoot(graph: AppGraph, actions: MutableStateFlow<AppAction?>) {
 @Composable
 private fun AppNavHost(graph: AppGraph, nav: NavHostController, session: VaultSession?, actions: MutableStateFlow<AppAction?>) {
     val motion = Nss.motion
+    // A widget tap or shortcut while another screen is on top (a note, the trash): go back to
+    // the main screen first, which then opens exactly the requested note. While locked it waits.
+    val pending by actions.collectAsStateWithLifecycle()
+    val entry by nav.currentBackStackEntryAsState()
+    LaunchedEffect(pending, entry?.destination?.route, session) {
+        val route = entry?.destination?.route ?: return@LaunchedEffect
+        if (pending == null || session == null || route == Routes.SIGNIN || route == Routes.SETUP || route == Routes.MAIN) return@LaunchedEffect
+        nav.popBackStack(Routes.MAIN, inclusive = false)
+    }
     NavHost(
         nav,
         startDestination = Routes.SIGNIN,
@@ -270,6 +284,7 @@ private fun MainScaffold(graph: AppGraph, session: VaultSession, nav: NavHostCon
                         onOpen = { open(it) },
                         onOpenTrash = { nav.navigate(Routes.TRASH) },
                         onOpenFolders = { nav.navigate(Routes.FOLDERS) },
+                        flow = { NoteFlow(session, onOpen = { open(it) }) },
                     )
                     Tab.SEARCH -> SearchScreen(session, onOpen = { p, q -> open(p, q) }, autoFocus = focusSearch)
                     Tab.RECENT -> RecentScreen(session, onOpen = { open(it) })
@@ -329,14 +344,31 @@ private fun MainScaffold(graph: AppGraph, session: VaultSession, nav: NavHostCon
     }
 }
 
-/** Slim header: the Mnemos logo, a Demo badge for the demo user, and Lock now for the owner. */
+/**
+ * Slim header: the Mnemos logo, a Demo badge, the vault's size ("1,284 notes · 312 MB"), the
+ * server state in server mode (offline, edits waiting), and Lock now for the owner.
+ */
 @Composable
 private fun Header(session: VaultSession, onLock: () -> Unit) {
+    val stats by session.stats.collectAsStateWithLifecycle()
+    val remote = session.fs as? RemoteVaultFs
+    val status by (remote?.status ?: flowOf(RemoteStatus())).collectAsStateWithLifecycle(initialValue = RemoteStatus())
     Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         BrandMark(style = MaterialTheme.typography.titleMedium, animate = false)
         Spacer(Modifier.width(8.dp))
         if (session.kind == UserKind.DEMO) NssBadge("Demo", Nss.colors.warn)
+        if (remote != null && (!status.online || status.pending > 0)) {
+            NssBadge(if (status.online) "${status.pending} to send" else "Offline" + (if (status.pending > 0) " · ${status.pending} waiting" else ""), Nss.colors.warn)
+        }
         Spacer(Modifier.weight(1f))
+        stats?.let { s ->
+            Text(
+                "%,d notes · %s".format(s.notes, Format.size(s.bytes)),
+                style = MaterialTheme.typography.labelSmall,
+                color = Nss.colors.muted,
+                modifier = Modifier.padding(end = 4.dp),
+            )
+        }
         if (session.kind == UserKind.OWNER) IconButton(onClick = onLock) { Icon(NssIcons.Lock, contentDescription = "Lock now") }
     }
 }

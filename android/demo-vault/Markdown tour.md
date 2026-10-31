@@ -52,9 +52,9 @@ fun greet(name: String): String {
 
 ## Footnotes
 
-Mnemos never touches the network.[^offline]
+Your notes stay plain files.[^files]
 
-[^offline]: It has no INTERNET permission at all.
+[^files]: On the phone, or on your own Mnemos server — never anyone else's.
 
 ## Image
 

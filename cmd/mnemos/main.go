@@ -136,7 +136,8 @@ func serve() error {
 	}
 
 	h := server.New(a, server.Options{Version: version, AutosaveMS: cfg.AutosaveMS,
-		CaptureNote: cfg.CaptureNote, TemplatesDir: cfg.TemplatesDir, MaxUploadMB: cfg.MaxUploadMB, Guard: g})
+		CaptureNote: cfg.CaptureNote, TemplatesDir: cfg.TemplatesDir, MaxUploadMB: cfg.MaxUploadMB, Guard: g,
+		StateDir: stateDir(cfg.StateDir), ApkURL: cfg.ApkURL})
 	srv := &http.Server{Addr: cfg.Listen, Handler: h, ReadHeaderTimeout: server.ReadHeaderTimeout,
 		ReadTimeout: server.ReadTimeout, WriteTimeout: server.WriteTimeout, IdleTimeout: server.IdleTimeout,
 		MaxHeaderBytes: server.MaxHeaderBytes, ErrorLog: log.New(os.Stderr, "http: ", log.LstdFlags)}
@@ -313,4 +314,12 @@ func unban(ip string) error {
 	}
 	fmt.Println("unbanned", ip)
 	return nil
+}
+
+// stateDir is dir when it can be written, else "" (settings then last until restart).
+func stateDir(dir string) string {
+	if stateFile(dir) == "" {
+		return ""
+	}
+	return dir
 }

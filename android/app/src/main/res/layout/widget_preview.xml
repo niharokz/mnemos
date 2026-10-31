@@ -17,6 +17,15 @@
         android:textSize="14sp"
         android:textStyle="bold" />
     <TextView
+        android:id="@+id/preview_meta"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:fontFamily="monospace"
+        android:maxLines="1"
+        android:textColor="@color/nss_muted"
+        android:textSize="11sp" />
+    <TextView
         android:id="@+id/preview_body"
         android:layout_width="match_parent"
         android:layout_height="match_parent"

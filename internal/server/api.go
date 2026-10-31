@@ -21,6 +21,7 @@ import (
 // api is the notes API. The vault always comes from the signed-in user.
 type api struct {
 	opt     Options
+	prefs   *prefs
 	mu      sync.Mutex
 	indexes map[*vault.Vault]*search.Index
 }
@@ -261,6 +262,21 @@ func (a *api) attach(w http.ResponseWriter, r *http.Request) error {
 	}
 	alt := strings.TrimSuffix(path.Base(p), path.Ext(p))
 	return ok(w, map[string]string{"path": p, "markdown": "![" + alt + "](" + vault.RelLink(note, p) + ")"})
+}
+
+// upload saves an image at exactly ?path= (the Android app in server mode names
+// its attachments itself); it never overwrites an existing file.
+func (a *api) upload(w http.ResponseWriter, r *http.Request) error {
+	limit := int64(a.opt.MaxUploadMB) << 20
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit+1))
+	if err != nil {
+		return httpx.Errorf(http.StatusRequestEntityTooLarge, "the image is bigger than %d MB", a.opt.MaxUploadMB)
+	}
+	p, err := vaultOf(r).SaveImageAt(r.URL.Query().Get("path"), body)
+	if err != nil {
+		return vaultErr(err)
+	}
+	return ok(w, map[string]string{"path": p})
 }
 
 func (a *api) resolve(w http.ResponseWriter, r *http.Request) error {

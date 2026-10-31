@@ -9,11 +9,20 @@ enum class ViewMode { EDIT, SPLIT, PREVIEW }
 
 /** How the home screen shows the vault. */
 enum class HomeView(val label: String) {
-    LIST("List"),
-    COMPACT("Compact"),
-    GRID("Grid"),
-    BOX("Box"),
-    TABS("Tabs"),
+    LIST("List"), // compact rows
+    BOX("Box"), // cards with previews
+    TABS("Tabs"), // one tab per top folder
+    FLOW("Flow"), // one note per screen, swipe up for the next
+    ;
+
+    companion object {
+        /** Reads a stored name, mapping the views of 1.1.0 (Compact → List, Grid → Box). */
+        fun of(name: String?): HomeView = when (name) {
+            "COMPACT" -> LIST
+            "GRID" -> BOX
+            else -> entries.firstOrNull { it.name == name } ?: LIST
+        }
+    }
 }
 
 /** Formatting toolbar buttons, in their default order. */
@@ -49,6 +58,8 @@ data class AppSettings(
     val treeSort: TreeSort = TreeSort.NAME,
     val homeView: HomeView = HomeView.LIST,
     val updateFolder: String = "apps",
+    // Cleanup: trash items older than this many days are deleted for good (1–3650)
+    val cleanupDays: Int = 30,
     // Editor
     val editorFont: EditorFont = EditorFont.SANS,
     val textSizeSp: Int = 15,

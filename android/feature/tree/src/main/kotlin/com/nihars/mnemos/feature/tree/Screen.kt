@@ -24,9 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
@@ -76,7 +73,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -109,8 +105,9 @@ private sealed interface TreeDialog {
 }
 
 /**
- * Home: the vault in one of five views. The + button makes a note in the default folder and
- * opens it; folders are created and removed in Manage folders, never here.
+ * Home: the vault as List, Box, Tabs or Flow. The + button makes a note in the default folder
+ * and opens it; folders are created and removed in Manage folders, never here. [flow] draws the
+ * Flow view (it lives in :feature:editor, which renders markdown).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -120,6 +117,7 @@ fun TreeScreen(
     onOpen: (String) -> Unit,
     onOpenTrash: () -> Unit,
     onOpenFolders: () -> Unit,
+    flow: @Composable () -> Unit = {},
 ) {
     val vm = graphViewModel(key = "tree-${session.id}") { TreeViewModel(session) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -141,7 +139,7 @@ fun TreeScreen(
         }
     }
     // Folder-at-a-time views: system back goes up a folder first.
-    val browsing = state.view == HomeView.GRID || state.view == HomeView.BOX || state.view == HomeView.TABS
+    val browsing = state.view == HomeView.BOX || state.view == HomeView.TABS
     val top = if (state.view == HomeView.TABS) state.tab else ""
     BackHandler(enabled = browsing && state.filter.isBlank() && state.currentDir != top) { vm.up() }
 
@@ -215,14 +213,26 @@ fun TreeScreen(
                         Modifier.align(Alignment.Center),
                     )
                 }
-                // Views cross-fade into each other.
+                // Views cross-fade into each other; going into a folder glides forward, going up glides back.
                 val motion = Nss.motion
-                AnimatedContent(if (state.filter.isBlank()) state.view else HomeView.LIST, transitionSpec = { motion.fadeThrough() }, label = "homeView") { view ->
+                val shown = (if (state.filter.isBlank()) state.view else HomeView.LIST) to (if (browsing) state.currentDir else "")
+                // the folder being left keeps its rows while it glides out
+                val shownRows = remember { HashMap<String, List<TreeRow>>() }
+                shownRows[state.currentDir] = state.browse
+                AnimatedContent(
+                    shown,
+                    transitionSpec = {
+                        if (initialState.first != targetState.first) motion.fadeThrough()
+                        else motion.sharedAxisX(forward = targetState.second.length >= initialState.second.length)
+                    },
+                    label = "homeView",
+                ) { (view, dir) ->
+                    val browse = shownRows[dir] ?: state.browse
                     when (view) {
-                        HomeView.LIST, HomeView.COMPACT -> TreeList(state, selectedPath, dense = view == HomeView.COMPACT, actions = actions, onOpenPinned = onOpen)
-                        HomeView.TABS -> TreeList(state.copy(rows = state.browse, pinned = if (state.tab.isEmpty()) state.pinned else emptyList()), selectedPath, dense = false, actions = actions, onOpenPinned = onOpen)
-                        HomeView.GRID -> GridView(state.browse, selectedPath, state.selection, actions)
-                        HomeView.BOX -> BoxView(state.browse, state.previews, selectedPath, state.selection, actions)
+                        HomeView.LIST -> TreeList(state, selectedPath, dense = true, actions = actions, onOpenPinned = onOpen)
+                        HomeView.TABS -> TreeList(state.copy(rows = browse, pinned = if (state.tab.isEmpty()) state.pinned else emptyList()), selectedPath, dense = true, actions = actions, onOpenPinned = onOpen)
+                        HomeView.BOX -> BoxView(browse, state.previews, selectedPath, state.selection, actions)
+                        HomeView.FLOW -> flow()
                     }
                 }
             }
@@ -277,7 +287,7 @@ private class RowActions(
     val openWith: (String) -> Unit,
 )
 
-/** List and Compact: the expandable tree with pinned notes on top. */
+/** List and Tabs: the expandable tree (compact rows) with pinned notes on top. */
 @Composable
 private fun TreeList(state: TreeState, selectedPath: String?, dense: Boolean, actions: RowActions, onOpenPinned: (String) -> Unit) {
     val motion = Nss.motion
@@ -311,52 +321,6 @@ private fun TreeList(state: TreeState, selectedPath: String?, dense: Boolean, ac
                     fadeOutSpec = tween(MotionTokens.SHORT),
                 ),
             )
-        }
-    }
-}
-
-/** Grid: icon tiles, one folder at a time. */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun GridView(rows: List<TreeRow>, selectedPath: String?, selection: Set<String>, actions: RowActions) {
-    val haptics = rememberHaptics()
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(104.dp),
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 96.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        gridItems(rows, key = { it.entry.path }) { row ->
-            val e = row.entry
-            val on = e.path == selectedPath || e.path in selection
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = if (on) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surface,
-                modifier = Modifier
-                    .animateItem()
-                    .clip(MaterialTheme.shapes.medium)
-                    .combinedClickable(onClick = { actions.open(row) }, onLongClick = {
-                        haptics.tick()
-                        actions.select(e.path)
-                    }),
-            ) {
-                Column(Modifier.fillMaxWidth().padding(vertical = 14.dp, horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(kindIcon(row.kind, e.isDirectory), contentDescription = null, tint = kindTint(row.kind, e.isDirectory), modifier = Modifier.size(32.dp))
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        displayName(e.name, e.isDirectory),
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                    )
-                    if (row.pinned || row.conflict) {
-                        Spacer(Modifier.height(4.dp))
-                        if (row.conflict) NssBadge("conflict", Nss.colors.error) else NssBadge("pinned", MaterialTheme.colorScheme.primary)
-                    }
-                }
-            }
         }
     }
 }
@@ -528,11 +492,10 @@ private fun FilterBar(
 }
 
 private fun viewIcon(v: HomeView): ImageVector = when (v) {
-    HomeView.LIST -> NssIcons.ListBullet
-    HomeView.COMPACT -> NssIcons.Rows
-    HomeView.GRID -> NssIcons.Grid
-    HomeView.BOX -> NssIcons.Template
+    HomeView.LIST -> NssIcons.Rows
+    HomeView.BOX -> NssIcons.Grid
     HomeView.TABS -> NssIcons.Tabs
+    HomeView.FLOW -> NssIcons.Flow
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

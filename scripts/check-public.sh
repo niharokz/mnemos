@@ -17,7 +17,7 @@ for f in .env .private-words; do
   fi
 done
 
-pattern='^(MNEMOS|SAMANOTE)_(PASSWORD|SECRET|STORE_PASSWORD|KEY_PASSWORD)=.{8,}'
+pattern='^MNEMOS_(PASSWORD|SECRET|STORE_PASSWORD|KEY_PASSWORD)=.{8,}'
 if git grep -nI -E "$pattern" -- . ':!.env.example' >/dev/null 2>&1; then
   echo "✗ something that looks like a real password or secret is committed:"
   git grep -nI -E "$pattern" -- . ':!.env.example'; fail=1

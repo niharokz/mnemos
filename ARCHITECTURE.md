@@ -28,18 +28,21 @@ thing the two share at build time is `android/demo-vault/`, which Go embeds.
 ```
 assets.go                go:embed android/demo-vault and VERSION (root package "mnemos")
 cmd/mnemos/main.go       serve | hash-password | check | health | version; builds the accounts
-internal/config/         MNEMOS_* env (SAMANOTE_* fallback, + optional .env) → Config, validated at start
+internal/config/         MNEMOS_* env (+ optional .env) → Config, validated at start
 internal/auth/           accounts (plain | bcrypt), per-account HMAC session cookie, sign-in rate limit, /api/login|logout|me
+internal/guard/          scanner-probe 404s, strikes and multi-day IP bans (kept in the state folder), `mnemos bans|unban`
 internal/httpx/          JSON helpers, StatusError, User in the request context, Router (session, X-Mnemos, same-origin, read-only, panics)
 internal/vault/          the only code that touches files: path safety, tree, read, versioned atomic write, create, move, trash
   extra.go               trash ledger + restore, append (capture), Syncthing conflicts + resolve, folder cards
+  cleanup.go             Cleanup (conflict copies → trash, erase trash older than N days; the only delete) and Stats
 internal/search/         in-memory index per vault: names, text, #tags, front matter; refreshed by size/mtime
 internal/demo/           builds the demo vault in a temp dir (embedded files + generated log and CSV)
 internal/render/         goldmark (GFM + footnotes + hard wraps), frontmatter block, relative link/image rewriting
 internal/server/         routes, handlers (api.go), error → status mapping, /raw, embedded assets, security headers
+  settings.go            /api/stats, /api/settings (cleanup days, in the state folder), /api/cleanup (GET preview, POST run)
 web/embed.go             go:embed of web/static
 web/static/
-  landing.html           public about page at / (features, Android install from GitLab, self-hosting)
+  landing.html           public home page at / (sign in, Android APK, run your own; {{APK_URL}} from MNEMOS_APK_URL)
   index.html             the app at /app: sign-in card (+ demo box) + app shell + SVG icon sprite
   css/nss-app.css        shared nss look for apps (same tokens as nss 3.0)
   css/mnemos.css         app layout, tree, panes, editor, preview, table, cards, diff, sheets
@@ -49,7 +52,9 @@ web/static/
   js/preview.js          debounced server render, tickable tasks, links, image/binary view
   js/table.js + csv.js   CSV/TSV grid; parser keeps each record's source bytes
   js/panels.js + diff.js search, recent, trash, capture, templates, conflict list and compare/merge
-  js/cards.js            folder as cards (image thumbnails)
+  js/cards.js            Box view: folder as cards (image thumbnails)
+  js/flow.js             Flow view: every note, newest first, one per screen (scroll-snap)
+  js/settings.js         Settings sheet: vault stats, cleanup days, preview + run
   js/images.js           paste / drop / pick images → /api/attach; full-screen lightbox
   js/tree.js             file tree + filter
   js/api.js              fetch wrapper (X-Mnemos, error mapping, 401 → sign-in)
@@ -57,12 +62,12 @@ web/static/
   js/landing.js          about page: sends installed-app launches and old /#/… links to /app
   vendor/codemirror.js   CodeMirror 6 bundle (built by tools/codemirror, committed)
   vendor/nss.min.css     nss subset used by the about page
-android/                 Mnemos for Android (Compose, offline); build.sh builds it in Docker
+android/                 Mnemos for Android (Compose; phone folder or server mode); build.sh builds it in Docker
 tools/codemirror/        package.json + entry.js + stub-html.js to rebuild the bundle
 scripts/check-public.sh  pre-push hook: blocks committed secrets, signing keys and private words
 scripts/check-version.sh    VERSION, android/version.properties and changelogs agree (CI runs it)
-scripts/release.sh          APK → GitLab package registry + release v<version> with a stable "mnemos.apk" link
-.gitlab-ci.yml              checks (Go, front end, versions, secrets, Docker, Android) and tag releases
+.gitlab-ci.yml              checks on shared runners; a v* tag builds the APK on your runner (tag mnemos-apk) and releases it
+.gitlab/                    issue (bug, feature) and merge request templates
 scripts/make-web-icons.py   web icons from the Android launcher mark
 vendor/                  Go dependencies (goldmark, x/crypto/bcrypt) — builds need no network
 ```
@@ -88,7 +93,7 @@ the router refuses every non-GET with **403** `{error, read_only: true}` — exc
 
 | Method | Path | Body → reply |
 |---|---|---|
-| GET | `/` | public about page (`{{VERSION}}` filled in) |
+| GET | `/` | public home page (`{{VERSION}}`, `{{APK_URL}}` filled in) |
 | GET | `/app` | the app; `/app/` redirects here |
 | GET | `/robots.txt` | allows `/`, disallows `/app`, `/api/`, `/raw/` |
 | POST | `/api/login` | `{user, password}` → `{ok, user, read_only}`; sets `__Host-mnemos` (HTTPS) or `mnemos_session` |
@@ -111,7 +116,12 @@ the router refuses every non-GET with **403** `{error, read_only: true}` — exc
 | POST | `/api/capture` | `{text}` → `{path}` (appends `- YYYY-MM-DD HH:mm text` to `MNEMOS_CAPTURE`) |
 | POST | `/api/conflicts/resolve` | `{copy, keep: original\|copy\|merged, content?}` → `{path}`; the loser goes to the trash |
 | POST | `/api/attach?note=&name=` | raw image body → `{path, markdown}`; saved as `<note folder>/attachments/<safe name>`, never overwriting |
+| POST | `/api/upload?path=` | raw image body → `{path}` at exactly that path, never overwriting (the Android app's queued images) |
 | POST | `/api/render` | `{path, content}` → `{html}` (resolves `![[embeds]]` through the search index) |
+| GET | `/api/stats` | `{notes, files, folders, bytes, trash_items, trash_bytes, conflicts}` |
+| GET / PUT | `/api/settings` | `{cleanup_days}` (1–3650, default 30; `/state/settings.json`, mode 600) |
+| GET | `/api/cleanup?days=` | preview: `{dry_run: true, days, moved: [path], deleted: [name], freed_size}` |
+| POST | `/api/cleanup?days=` | the same, done: conflict copies → trash, older trash erased (refused for the demo) |
 | GET | `/raw/<path>[?download=1]` | the file as-is, own CSP `sandbox`; HTML/JS/XML sent as `text/plain` |
 | GET | `/healthz` | `ok` (Docker healthcheck via `mnemos health`) |
 
@@ -193,7 +203,7 @@ kept). Different with unsaved edits: save, which raises the conflict bar. A foll
 
 ## Deploy
 
-1. `.env` (or a shared `.env` symlinked into the folder) holds `NOTE_PATH`, `PUID`, `PGID`, `TZ`, `MNEMOS_NETWORK` and the `MNEMOS_*` keys (old `SAMANOTE_*` keys still work). Compose passes only `TZ` and those keys into the container.
+1. `.env` (or a shared `.env` symlinked into the folder) holds `NOTE_PATH`, `PUID`, `PGID`, `TZ`, `MNEMOS_NETWORK` and the `MNEMOS_*` keys. Compose passes only `TZ` and those keys into the container.
 2. `docker compose run --rm mnemos check` — settings plus every folder/file the container user cannot write.
 3. `docker compose up -d --build`. The container is `mnemos` on the external network: `reverse_proxy mnemos:8080`.
 4. Release: bump `VERSION` and `android/version.properties` (`versionName`, `versionCode` + 1), add both changelog sections, `sh scripts/check-version.sh`, then push the tag `v<version>`; CI does the rest (README → Versions and releases).

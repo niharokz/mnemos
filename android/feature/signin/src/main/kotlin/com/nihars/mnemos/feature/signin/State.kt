@@ -24,7 +24,7 @@ data class SignInState(
     val name: String = "",
 )
 
-enum class SetupStep { NAME, REASON, FOLDER, PIN, BIOMETRIC }
+enum class SetupStep { NAME, REASON, FOLDER, SERVER, PIN, BIOMETRIC }
 
 data class FolderRow(val name: String, val path: String, val isVault: Boolean)
 

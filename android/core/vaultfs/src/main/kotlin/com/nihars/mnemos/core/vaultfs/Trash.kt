@@ -19,5 +19,5 @@ class Trash(private val fs: VaultFs) {
     }
 
     fun list(): List<VaultEntry> =
-        if (!fs.exists(VaultPaths.TRASH)) emptyList() else fs.list(VaultPaths.TRASH).sortedByDescending { it.modified }
+        if (!fs.exists(VaultPaths.TRASH)) emptyList() else fs.list(VaultPaths.TRASH).filter { !it.name.startsWith('.') }.sortedByDescending { it.modified }
 }

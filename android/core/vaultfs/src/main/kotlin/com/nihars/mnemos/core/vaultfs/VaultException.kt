@@ -8,6 +8,8 @@ sealed class VaultException(message: String) : Exception(message) {
     class PermissionDenied(path: String) : VaultException(
         "Android refused to write “$path”. Check that Mnemos still has All files access and the folder is writable.",
     )
+    /** The Mnemos server refused or could not do it (server mode); the message says why. */
+    class Remote(message: String) : VaultException(message)
     class IoFailure(path: String, cause: Throwable) : VaultException("Couldn't access “$path” (${cause.javaClass.simpleName}). Try again.") {
         init {
             initCause(cause)

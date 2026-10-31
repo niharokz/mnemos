@@ -28,6 +28,30 @@ class VaultFsTest {
         Files.write(p, text.toByteArray())
     }
 
+    @Test fun deleteForeverOnlyInsideTrash() {
+        write("keep.md", "x")
+        write(".trash/old.md", "x")
+        write(".trash/dir/a.md", "x")
+        fs.deleteForever(".trash/old.md")
+        fs.deleteForever(".trash/dir")
+        assertFalse(Files.exists(root.resolve(".trash/old.md")))
+        assertFalse(Files.exists(root.resolve(".trash/dir")))
+        for (bad in listOf("keep.md", ".trash", ".trash/../keep.md", "")) {
+            try {
+                fs.deleteForever(bad)
+                fail("erased $bad")
+            } catch (_: VaultException.PathRejected) {
+            }
+        }
+        assertTrue(Files.exists(root.resolve("keep.md")))
+    }
+
+    @Test fun trashListSkipsServerLedger() {
+        write(".trash/a.md", "x")
+        write(".trash/.mnemos-trash.tsv", "a.md\ta.md\t1")
+        assertEquals(listOf("a.md"), Trash(fs).list().map { it.name })
+    }
+
     @Test fun atomicWriteReplacesAndLeavesNoTemp() {
         write("a.md", "old")
         assertEquals(WriteOutcome.ATOMIC, fs.writeAtomic("a.md", "new".toByteArray()))

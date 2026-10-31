@@ -1,7 +1,6 @@
 package com.nihars.mnemos.feature.signin
 
 import android.content.Intent
-import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -54,6 +53,7 @@ import com.nihars.mnemos.core.design.GridBackground
 import com.nihars.mnemos.core.design.Nss
 import com.nihars.mnemos.core.design.NssBadge
 import com.nihars.mnemos.core.design.NssIcons
+import androidx.core.net.toUri
 
 /** First-run setup: access → vault folder → PIN → fingerprint. [vaultOnly] stops after the folder. */
 @Composable
@@ -76,6 +76,7 @@ fun SetupScreen(vaultOnly: Boolean, onDone: () -> Unit, onCancel: () -> Unit) {
                         SetupStep.NAME -> "Welcome to Mnemos"
                         SetupStep.REASON -> "Access your notes"
                         SetupStep.FOLDER -> "Choose your vault folder"
+                        SetupStep.SERVER -> "Use your Mnemos server"
                         SetupStep.PIN -> "Create a PIN or password"
                         SetupStep.BIOMETRIC -> "Fingerprint unlock"
                     },
@@ -92,13 +93,15 @@ fun SetupScreen(vaultOnly: Boolean, onDone: () -> Unit, onCancel: () -> Unit) {
                     SetupStep.NAME -> NameStep(vm::setName)
                     SetupStep.REASON -> ReasonStep(
                         onGrant = {
-                            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}"))
+                            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, "package:${context.packageName}".toUri())
                             runCatching { context.startActivity(intent) }
                                 .onFailure { context.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
                         },
                         onSlowMode = { pickTree.launch(null) },
+                        onServer = vm::chooseServer,
                     )
-                    SetupStep.FOLDER -> FolderStep(state, vm::openFolder, vm::up, vm::useFolder)
+                    SetupStep.FOLDER -> FolderStep(state, vm::openFolder, vm::up, vm::useFolder, vm::chooseServer)
+                    SetupStep.SERVER -> ServerStep(state.busy, vm::useServer, vm::backToFolder)
                     SetupStep.PIN -> PinStep(state.pinProblem, state.busy) { pin, confirm -> vm.setPin(pin, confirm, Biometric.available(context)) }
                     SetupStep.BIOMETRIC -> BiometricStep(
                         onEnable = { context.findFragmentActivity()?.let { a -> Biometric.enroll(a, vm::biometricResult) } },
@@ -129,11 +132,12 @@ private fun NameStep(onDone: (String) -> Unit) {
 }
 
 @Composable
-private fun ReasonStep(onGrant: () -> Unit, onSlowMode: () -> Unit) {
+private fun ReasonStep(onGrant: () -> Unit, onSlowMode: () -> Unit, onServer: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             "Mnemos reads and saves your notes as plain files in a folder you choose, such as your Syncthing or Obsidian folder. " +
-                "To do that quickly it needs All files access. It has no internet permission, so nothing ever leaves the phone.",
+                "To do that quickly it needs All files access. In this mode nothing leaves the phone. " +
+                "Or skip the folder and use your Mnemos server, like the web app.",
             style = MaterialTheme.typography.bodyLarge,
         )
         Spacer(Modifier.height(8.dp))
@@ -144,11 +148,44 @@ private fun ReasonStep(onGrant: () -> Unit, onSlowMode: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
             color = Nss.colors.muted,
         )
+        TextButton(onClick = onServer, modifier = Modifier.fillMaxWidth()) { Text("Use my Mnemos server instead") }
+    }
+}
+
+/** Server mode: the notes stay on your Mnemos server; the phone keeps a cache and works offline. */
+@Composable
+private fun ServerStep(busy: Boolean, onSignIn: (String, String, String) -> Unit, onBack: () -> Unit) {
+    var url by rememberSaveable { mutableStateOf("") }
+    var user by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    val ready = url.isNotBlank() && user.isNotBlank() && password.isNotEmpty() && !busy
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            "Sign in with the account you use on the web. Notes you open stay on the phone, and edits made offline are sent when the server is back.",
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        OutlinedTextField(
+            url, { url = it.trim() }, label = { Text("Server") }, placeholder = { Text("notes.example.com") }, singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next), modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            user, { user = it }, label = { Text("User") }, singleLine = true,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, imeAction = ImeAction.Next), modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            password, { password = it }, label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { if (ready) onSignIn(url, user, password) }), modifier = Modifier.fillMaxWidth(),
+        )
+        Button(onClick = { onSignIn(url, user, password) }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Signing in…" else "Sign in") }
+        TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Use a folder on this phone instead") }
+        Text("Only https:// servers. The password is not stored; the phone keeps the server's sign-in for 30 days.",
+            style = MaterialTheme.typography.bodySmall, color = Nss.colors.muted)
     }
 }
 
 @Composable
-private fun FolderStep(state: SetupState, onOpen: (String) -> Unit, onUp: () -> Unit, onUse: () -> Unit) {
+private fun FolderStep(state: SetupState, onOpen: (String) -> Unit, onUp: () -> Unit, onUse: () -> Unit, onServer: () -> Unit) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onUp) { Icon(NssIcons.ArrowUp, contentDescription = "Parent folder") }
@@ -171,6 +208,7 @@ private fun FolderStep(state: SetupState, onOpen: (String) -> Unit, onUp: () -> 
         }
         Spacer(Modifier.height(12.dp))
         Button(onClick = onUse, modifier = Modifier.fillMaxWidth(), enabled = state.folder.isNotEmpty()) { Text("Use this folder") }
+        TextButton(onClick = onServer, modifier = Modifier.fillMaxWidth()) { Text("Use my Mnemos server instead") }
     }
 }
 

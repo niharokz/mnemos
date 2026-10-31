@@ -87,7 +87,7 @@ func (v *Vault) ListTrash() ([]TrashItem, error) {
 	led := v.ledger()
 	out := []TrashItem{}
 	for _, e := range ents {
-		if e.Name() == ledgerName || strings.HasPrefix(e.Name(), ".samanote-") || strings.HasPrefix(e.Name(), ".mnemos-") {
+		if e.Name() == ledgerName || strings.HasPrefix(e.Name(), ".mnemos-") {
 			continue
 		}
 		info, err := e.Info()

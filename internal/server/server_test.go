@@ -39,7 +39,7 @@ func setup(t *testing.T) *env {
 	owner := &auth.Account{User: httpx.User{Name: "me", Vault: v}, Password: "pw"}
 	demo := &auth.Account{User: httpx.User{Name: "demouser", ReadOnly: true, Vault: dv}, Password: "demo", ShowHint: true}
 	a := auth.New("secret", owner, demo)
-	e := &env{t: t, h: New(a, Options{Version: "test", AutosaveMS: 1000, CaptureNote: "inbox/note.md", TemplatesDir: "templates", MaxUploadMB: 1}), dir: dir, demo: ddir}
+	e := &env{t: t, h: New(a, Options{Version: "test", AutosaveMS: 1000, CaptureNote: "inbox/note.md", TemplatesDir: "templates", MaxUploadMB: 1, ApkURL: "https://example.org/mnemos.apk"}), dir: dir, demo: ddir}
 	e.cookie = &http.Cookie{Name: auth.CookieName, Value: a.Token(owner, time.Now().Add(time.Hour))}
 	e.demoC = &http.Cookie{Name: auth.CookieName, Value: a.Token(demo, time.Now().Add(time.Hour))}
 	return e
@@ -177,7 +177,7 @@ func TestLandingPage(t *testing.T) {
 	w := httptest.NewRecorder()
 	e.h.ServeHTTP(w, r)
 	body := w.Body.String()
-	if w.Code != 200 || !strings.Contains(body, `href="/app"`) || !strings.Contains(body, "Mnemos test") || !strings.Contains(body, "mnemos.apk") || strings.Contains(body, "{{VERSION}}") {
+	if w.Code != 200 || !strings.Contains(body, `href="/app"`) || !strings.Contains(body, "mnemos test") || !strings.Contains(body, `href="https://example.org/mnemos.apk"`) || strings.Contains(body, "{{") {
 		t.Fatalf("landing page: %d\n%.300s", w.Code, body)
 	}
 	r = httptest.NewRequest("GET", "/", nil)
@@ -437,5 +437,42 @@ func TestScannerAndBruteForceAreBanned(t *testing.T) {
 	}
 	if c := req("POST", "/api/login", guesser, `{"user":"me","password":"pw"}`); c != http.StatusForbidden {
 		t.Fatalf("guesser can still sign in after 5 failures: %d", c)
+	}
+}
+
+func TestStatsSettingsAndCleanup(t *testing.T) {
+	e := setup(t)
+	os.WriteFile(filepath.Join(e.dir, "a.md"), []byte("hello"), 0o644)
+	os.WriteFile(filepath.Join(e.dir, "a.sync-conflict-20261001-120000-ABCDEFG.md"), []byte("x"), 0o644)
+	code, out, _ := e.do("GET", "/api/stats", "", true, false)
+	if code != 200 || out["notes"].(float64) != 2 || out["bytes"].(float64) != 6 {
+		t.Fatalf("stats: %d %v", code, out)
+	}
+	if code, out, _ = e.do("GET", "/api/settings", "", true, false); code != 200 || out["cleanup_days"].(float64) != DefaultCleanupDays {
+		t.Fatalf("settings: %d %v", code, out)
+	}
+	if code, _, _ = e.do("PUT", "/api/settings", `{"cleanup_days":0}`, true, true); code != 400 {
+		t.Fatalf("0 days accepted: %d", code)
+	}
+	if code, out, _ = e.do("PUT", "/api/settings", `{"cleanup_days":14}`, true, true); code != 200 || out["cleanup_days"].(float64) != 14 {
+		t.Fatalf("save: %d %v", code, out)
+	}
+	if code, out, _ = e.do("GET", "/api/cleanup", "", true, false); code != 200 || out["days"].(float64) != 14 || len(out["moved"].([]any)) != 1 {
+		t.Fatalf("preview: %d %v", code, out)
+	}
+	if code, out, _ = e.do("POST", "/api/cleanup", "", true, true); code != 200 || len(out["moved"].([]any)) != 1 {
+		t.Fatalf("run: %d %v", code, out)
+	}
+	if _, err := os.Stat(filepath.Join(e.dir, ".trash", "a.sync-conflict-20261001-120000-ABCDEFG.md")); err != nil {
+		t.Fatal("conflict copy not in the trash")
+	}
+	// the demo user may look but not clean up
+	r := httptest.NewRequest("POST", "/api/cleanup", nil)
+	r.AddCookie(e.demoC)
+	r.Header.Set("X-Mnemos", "1")
+	w := httptest.NewRecorder()
+	e.h.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("demo cleanup: %d", w.Code)
 	}
 }

@@ -10,7 +10,9 @@ object LogoColors {
 
     data class Preset(val key: String, val label: String, val hex: String)
 
+    // "black" (the nss night tile, like Natlas and Median) is the default.
     val presets = listOf(
+        Preset("black", "Dark", "#070b0f"),
         Preset("teal", "Teal", "#3a807a"),
         Preset("blue", "Blue", "#1d4ed8"),
         Preset("indigo", "Indigo", "#4f46e5"),
@@ -20,12 +22,11 @@ object LogoColors {
         Preset("orange", "Orange", "#ea580c"),
         Preset("green", "Green", "#2e7d32"),
         Preset("slate", "Slate", "#475569"),
-        Preset("black", "Black", "#111827"),
         Preset("white", "White", "#ffffff"),
         Preset("transparent", "Transparent", TRANSPARENT),
     )
 
-    /** The preset for a stored setting; empty or unknown values mean teal. */
+    /** The preset for a stored setting; empty or unknown values mean the default (dark). */
     fun presetFor(value: String): Preset =
         presets.firstOrNull { it.hex.equals(value, ignoreCase = true) || it.key == value } ?: presets.first()
 }

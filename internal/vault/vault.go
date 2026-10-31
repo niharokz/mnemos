@@ -3,7 +3,8 @@
 // entries (.obsidian, .trash, .stfolder, .git …) and refuses symlinks that point
 // outside. Writes are atomic (temp file → fsync → rename) and carry a version so a
 // save never silently overwrites an edit made meanwhile by Obsidian, Syncthing,
-// Omnimo or Kronos. Nothing is ever deleted: "delete" moves to the trash folder.
+// Omnimo or Kronos. "Delete" moves to the trash folder; only Cleanup (cleanup.go)
+// removes trash items for good, when they are older than the days you chose.
 package vault
 
 import (

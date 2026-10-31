@@ -1,5 +1,6 @@
 package com.nihars.mnemos.app
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
@@ -20,8 +21,12 @@ class CaptureTileService : TileService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startActivityAndCollapse(PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE))
         } else {
-            @Suppress("DEPRECATION")
-            startActivityAndCollapse(intent)
+            startLegacy(intent)
         }
     }
+
+    // Android 12–13 only accept an Intent here; 14+ takes the PendingIntent branch above.
+    @SuppressLint("StartActivityAndCollapseDeprecated")
+    @Suppress("DEPRECATION")
+    private fun startLegacy(intent: Intent) = startActivityAndCollapse(intent)
 }

@@ -67,6 +67,11 @@ export const api = {
   resolve: (copy, keep, content = "") => request("POST", "/api/conflicts/resolve", { copy, keep, content }),
   attach: (note, file) => upload("/api/attach?note=" + encodeURIComponent(note) + "&name=" + encodeURIComponent(file.name || "image"), file),
   render: (path, content, signal) => request("POST", "/api/render", { path, content }, { signal }),
+  stats: () => request("GET", "/api/stats"),
+  settings: () => request("GET", "/api/settings"),
+  settingsSave: (values) => request("PUT", "/api/settings", values),
+  cleanupPreview: (days) => request("GET", "/api/cleanup?days=" + days),
+  cleanup: (days) => request("POST", "/api/cleanup?days=" + days),
 };
 
 /** URL of a vault file served as-is (download = save instead of show). */

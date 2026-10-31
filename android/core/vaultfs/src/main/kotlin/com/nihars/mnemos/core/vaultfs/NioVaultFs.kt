@@ -89,6 +89,29 @@ class NioVaultFs(rootDir: Path) : VaultFs {
         io(rel) { Files.createDirectories(resolve(rel)) }
     }
 
+    override fun deleteForever(path: String) {
+        val rel = VaultPaths.checkTrashItem(path)
+        io(rel) {
+            val target = resolve(rel)
+            if (Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
+                Files.walkFileTree(target, object : SimpleFileVisitor<Path>() {
+                    override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                        Files.delete(file)
+                        return FileVisitResult.CONTINUE
+                    }
+
+                    override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
+                        if (exc != null) throw exc
+                        Files.delete(dir)
+                        return FileVisitResult.CONTINUE
+                    }
+                })
+            } else {
+                Files.delete(target)
+            }
+        }
+    }
+
     override fun move(from: String, to: String) {
         val src = VaultPaths.normalize(from)
         val dst = VaultPaths.checkWritable(to)

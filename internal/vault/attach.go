@@ -121,3 +121,28 @@ func RelLink(notePath, target string) string {
 	}
 	return b.String()
 }
+
+// SaveImageAt stores an image at exactly rel, creating its folder; it never
+// overwrites (ErrExists). The Android app uses it in server mode, where it picks
+// the attachment's name itself.
+func (v *Vault) SaveImageAt(rel string, data []byte) (string, error) {
+	if ImageType(data) == "" {
+		return "", ErrNotImage
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	clean, abs, err := v.Resolve(rel)
+	if err != nil {
+		return "", err
+	}
+	if clean == "" {
+		return "", ErrBadPath
+	}
+	if _, err := os.Lstat(abs); err == nil {
+		return "", ErrExists
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		return "", perm(err, "create", path.Dir(clean))
+	}
+	return clean, perm(atomicWrite(abs, data, 0o644), "write", clean)
+}

@@ -25,17 +25,19 @@ per-IP login lockout and multi-day bans for repeated failed sign-ins or scans fo
 the notes folder, strict CSP and security headers, and a non-root, read-only,
 capability-free container that can only write to your notes.
 
-The Android app has no INTERNET permission; see `android/README.md`.
+The Android app talks only to the Mnemos server you sign in to (https only, session
+cookie kept in app-private storage, never the password). With a phone folder it makes no
+network requests; see `android/README.md`.
 
 ## Your part
 
 - Use a long passphrase and store it as a bcrypt hash in `MNEMOS_PASSWORD`.
 - Set `MNEMOS_SECRET` to 32+ random characters (`openssl rand -hex 32`).
 - Keep `.env` out of git (`.gitignore` does this). A shared `.env` is fine:
-  `docker-compose.yml` passes only `TZ` and the `MNEMOS_*` (or old `SAMANOTE_*`)
-  variables into the container.
+  `docker-compose.yml` passes only `TZ` and the `MNEMOS_*` variables into the container.
 - Serve Mnemos only over HTTPS, behind a proxy you control, and do not publish
   its port: the login lockout trusts the client-IP headers your proxy sets.
 - The demo login is public on purpose. If you do not want a demo, set `MNEMOS_DEMO=false`.
 - Keep the Android signing key (`$KEYS_HOME/.mnemos-keys`, mode 700) out of the repo and backed up;
-  `scripts/check-public.sh` refuses a push that tracks a keystore.
+  `scripts/check-public.sh` refuses a push that tracks a keystore. Only your own release runner
+  (tag `mnemos-apk`) can read it; GitLab never stores it.

@@ -6,7 +6,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.baselineprofile)
 }
 
 // One place for the version: version.properties at the repo root.
@@ -66,6 +65,9 @@ android {
         abortOnError = true
         checkDependencies = true
         lintConfig = rootProject.file("config/lint.xml")
+        // Print every issue in the build log (CI shows them all, not just the first).
+        textReport = true
+        textOutput = file("stdout")
     }
 
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/mnemosAssets"))
@@ -91,7 +93,6 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.profileinstaller)
-    "baselineProfile"(project(":benchmark"))
     debugImplementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.test.manifest)
     testImplementation(libs.junit)

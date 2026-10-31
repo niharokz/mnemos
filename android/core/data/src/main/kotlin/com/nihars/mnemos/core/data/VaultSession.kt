@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -34,6 +36,9 @@ import java.time.format.DateTimeFormatter
 enum class UserKind(val key: String) { OWNER("owner"), DEMO("demo") }
 
 data class ScanProgress(val running: Boolean = false, val done: Int = 0, val total: Int = 0)
+
+/** What the vault holds, for the header and Settings: "1,284 notes · 312 MB". */
+data class VaultStats(val notes: Int, val files: Int, val bytes: Long)
 
 /**
  * One signed-in user: their vault, index, settings and the vault operations every screen uses.
@@ -67,6 +72,9 @@ class VaultSession(
     /** Paths changed by anyone (watcher) or by us (saves, moves). Screens refresh from this. */
     val changes: SharedFlow<Set<String>> = _changes
 
+    private val _stats = MutableStateFlow<VaultStats?>(null)
+    val stats: StateFlow<VaultStats?> = _stats.asStateFlow()
+
     private val _scan = MutableStateFlow(ScanProgress())
     val scan: StateFlow<ScanProgress> = _scan.asStateFlow()
     private var scanJob: Job? = null
@@ -77,6 +85,19 @@ class VaultSession(
                 _changes.emit(paths)
                 runCatching { scanner.refresh(paths) }
             }
+        }
+        // counts follow every change, at most every 2 s
+        @OptIn(FlowPreview::class)
+        scope.launch { _changes.debounce(2000).collect { refreshStats() } }
+    }
+
+    /** Counts notes (.md), files and bytes outside hidden folders. */
+    fun refreshStats() {
+        scope.launch(Dispatchers.IO) {
+            val all = runCatching { fs.walk() }.getOrNull() ?: return@launch
+            val rules = hidden.value
+            val files = all.filter { !it.isDirectory && !rules.isHiddenPath(it.path) }
+            _stats.value = VaultStats(files.count { VaultPaths.ext(it.name) == "md" }, files.size, files.sumOf { it.size })
         }
     }
 
@@ -93,6 +114,7 @@ class VaultSession(
                 Log.w("index scan stopped", e)
             } finally {
                 _scan.value = ScanProgress()
+                refreshStats()
             }
         }
     }
@@ -108,6 +130,14 @@ class VaultSession(
         scope.launch {
             _changes.emit(set)
             runCatching { scanner.refresh(set) }
+        }
+    }
+
+    /** Paths another device changed (server mode sync): refresh screens and the index, not "our writes". */
+    fun externalChange(paths: Set<String>) {
+        scope.launch {
+            _changes.emit(paths)
+            runCatching { scanner.refresh(paths) }
         }
     }
 

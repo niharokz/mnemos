@@ -101,6 +101,14 @@ class SafVaultFs(private val resolver: ContentResolver, private val tree: Uri) :
         }
     }
 
+    override fun deleteForever(path: String) {
+        val rel = VaultPaths.checkTrashItem(path)
+        io(rel) {
+            if (!DocumentsContract.deleteDocument(resolver, uriOf(rel))) throw IOException("This storage provider refused to delete.")
+            ids.clear()
+        }
+    }
+
     override fun move(from: String, to: String) {
         val src = VaultPaths.normalize(from)
         val dst = VaultPaths.checkWritable(to)

@@ -288,7 +288,7 @@ fun CursorRefreshIndicator(fraction: Float, refreshing: Boolean, modifier: Modif
  * Reduced motion: plain fade.
  */
 @Composable
-fun CircularReveal(origin: Offset = Offset(0.5f, 0.2f), modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun CircularReveal(modifier: Modifier = Modifier, origin: Offset = Offset(0.5f, 0.2f), content: @Composable () -> Unit) {
     val motion = Nss.motion
     val progress = remember { Animatable(if (motion.full) 0f else 1f) }
     val fade = remember { Animatable(if (motion.full || motion.off) 1f else 0f) }

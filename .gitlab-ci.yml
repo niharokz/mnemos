@@ -1,67 +1,37 @@
-# Mnemos CI — checks every merge request and push to the default branch, and
-# releases when a version tag is pushed:
+# Mnemos CI on GitLab (free tier).
 #
-#   check    go vet/test/gofmt, front-end syntax, versions, no secrets, Docker build,
-#            Android unit tests + lint (only when android/ changed, and on tags)
-#   build    tag v<version>: signed release APK (no INTERNET permission, checked)
-#   release  tag v<version>: APK into the package registry + GitLab release
+#   every push / merge request  check    Go (gofmt, vet, test), front end, versions, no secrets,
+#                                        Docker image build — on GitLab shared runners
+#   tag vX.Y.Z (= VERSION)      apk      signed APK built by your own runner (tag: mnemos-apk),
+#                                        uploaded to the project's package registry
+#                               image    web image pushed to the container registry (:X.Y.Z, :latest)
+#                               release  a GitLab release with the CHANGELOG section and the APK
 #
-# Release: bump VERSION, android/version.properties and both changelogs, then
-#   git tag v1.0.1 && git push origin v1.0.1
-#
-# One-time project settings (see README → "Releasing"):
-#   Settings → Repository → Protected tags: v*
-#   Settings → CI/CD → Variables (protected, masked): MNEMOS_KEYSTORE_B64 (type File),
-#     MNEMOS_STORE_PASSWORD, MNEMOS_KEY_PASSWORD, MNEMOS_KEY_ALIAS
-#   (`cd android && ./build.sh ci-secrets` prepares them from the local key)
+# The newest APK is always at
+#   https://gitlab.com/niharokz/mnemos/-/releases/permalink/latest/downloads/mnemos.apk
+# Runner setup and releasing: README → "Releases and the Android APK".
 
-stages: [prepare, check, build, release]
+stages: [check, build, release]
 
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
     - if: $CI_COMMIT_TAG
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 variables:
   GOFLAGS: -mod=vendor
-  # The Android build image is android/docker/Dockerfile (the same one build.sh uses).
-  # Bump the tag when that Dockerfile changes, so CI builds and stores the new one.
-  ANDROID_IMAGE: $CI_REGISTRY_IMAGE/android-build:jdk21-sdk36-1
 
-# Rules shared by the Android jobs: tags, and any change under android/.
-.android-rules: &android-rules
+.release: &release
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
-    - changes: [android/**/*]
-
-.release-rules: &release-rules
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
-
-# ── prepare ───────────────────────────────────────────────────────────────────
-android-image:
-  stage: prepare
-  image: docker:27
-  services: [docker:27-dind]
-  variables:
-    DOCKER_TLS_CERTDIR: /certs
-  <<: *android-rules
-  script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
-    # built once per tag of ANDROID_IMAGE, then reused by every pipeline
-    - |
-      if docker manifest inspect "$ANDROID_IMAGE" >/dev/null 2>&1; then
-        echo "$ANDROID_IMAGE is ready"
-      else
-        docker build -t "$ANDROID_IMAGE" android/docker && docker push "$ANDROID_IMAGE"
-      fi
 
 # ── check ─────────────────────────────────────────────────────────────────────
 go:
   stage: check
   image: golang:1.24-alpine
-  needs: []
   script:
     - unformatted=$(gofmt -l assets.go cmd internal web)
     - '[ -z "$unformatted" ] || { echo "gofmt needed: $unformatted"; exit 1; }'
@@ -71,7 +41,6 @@ go:
 web:
   stage: check
   image: node:22-alpine
-  needs: []
   script:
     - for f in web/static/js/*.js; do node --check "$f"; done
     - node -e 'JSON.parse(require("fs").readFileSync("web/static/manifest.webmanifest"))'
@@ -79,14 +48,12 @@ web:
 versions:
   stage: check
   image: alpine:3.20
-  needs: []
   script:
     - sh scripts/check-version.sh "${CI_COMMIT_TAG:-}"
 
 public:
   stage: check
   image: alpine:3.20
-  needs: []
   before_script:
     - apk add --no-cache git
   script:
@@ -96,75 +63,56 @@ docker:
   stage: check
   image: docker:27
   services: [docker:27-dind]
-  needs: []
   variables:
     DOCKER_TLS_CERTDIR: /certs
   script:
-    # the web image builds and its tests pass inside the build
+    # the web image builds, and its tests pass inside the build
     - docker build -t mnemos:ci .
-    # a tag also publishes it, e.g. registry.gitlab.com/niharokz/mnemos:1.0.1
     - |
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
         echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
-        v=$(cat VERSION)
-        for t in "$v" latest; do docker tag mnemos:ci "$CI_REGISTRY_IMAGE:$t" && docker push "$CI_REGISTRY_IMAGE:$t"; done
+        for t in "$(cat VERSION)" latest; do docker tag mnemos:ci "$CI_REGISTRY_IMAGE:$t" && docker push "$CI_REGISTRY_IMAGE:$t"; done
       fi
 
-.android:
-  image: $ANDROID_IMAGE
-  needs: [android-image]
-  before_script:
-    - chmod +x android/gradlew # in case the file mode was lost (e.g. committed from Windows)
-  variables:
-    GRADLE_USER_HOME: $CI_PROJECT_DIR/.gradle-home
-    GRADLE_OPTS: -Dorg.gradle.daemon=false
-  cache:
-    key:
-      files: [android/gradle/libs.versions.toml, android/gradle/wrapper/gradle-wrapper.properties]
-    paths: [.gradle-home/caches, .gradle-home/wrapper]
-
-android-check:
-  extends: .android
-  stage: check
-  <<: *android-rules
-  script:
-    - cd android
-    - ./gradlew --continue check lint
-  artifacts:
-    when: on_failure
-    expire_in: 1 week
-    paths: [android/**/build/reports/]
-
 # ── build ─────────────────────────────────────────────────────────────────────
-android-apk:
-  extends: .android
+apk:
   stage: build
-  needs: [android-image, android-check, go, versions]
-  <<: *release-rules
+  tags: [mnemos-apk]                      # your self-hosted shell runner (Docker + signing key); uses no CI minutes
+  needs: [go, versions]
+  <<: *release
+  variables:
+    GIT_CLEAN_FLAGS: -ffdx -e android/dist/   # the Gradle cache is a Docker volume, kept between releases
   script:
-    - test -n "${MNEMOS_KEYSTORE_B64:-}" || { echo "Add the signing key as CI variables first (README → Releasing)"; exit 1; }
-    # the key is a File variable (or plain base64 text); it never leaves this job
-    - if [ -f "$MNEMOS_KEYSTORE_B64" ]; then base64 -d "$MNEMOS_KEYSTORE_B64"; else printf '%s' "$MNEMOS_KEYSTORE_B64" | base64 -d; fi > /tmp/mnemos.jks
-    - export MNEMOS_KEYSTORE=/tmp/mnemos.jks
-    - cd android && ./gradlew :app:assembleRelease && cd ..
-    - V=$(cat VERSION) && mkdir -p android/dist && cp android/app/build/outputs/apk/release/app-release.apk "android/dist/mnemos-$V.apk"
-    # hard rules: signed with the release key, and no INTERNET permission
-    - $ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs "android/dist/mnemos-$V.apk"
-    - '! $ANDROID_HOME/build-tools/36.0.0/aapt dump permissions "android/dist/mnemos-$V.apk" | grep -q android.permission.INTERNET'
-    - sha256sum "android/dist/mnemos-$V.apk"
-  after_script:
-    - rm -f /tmp/mnemos.jks
+    - VERSION=$(cat VERSION)
+    - '[ "v$VERSION" = "$CI_COMMIT_TAG" ] || { echo "tag $CI_COMMIT_TAG does not match VERSION $VERSION"; exit 1; }'
+    - ./android/build.sh
+    - cp "android/dist/mnemos-$VERSION.apk" mnemos.apk
+    - 'curl --fail-with-body --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file mnemos.apk
+        "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/mnemos/$CI_COMMIT_TAG/mnemos-$CI_COMMIT_TAG.apk"'
+    # release notes: this version's section of CHANGELOG.md (web) and android/CHANGELOG.md
+    - awk -v v="$VERSION" '/^## /{p = index($0 " ", "## " v " ") == 1; next} p' CHANGELOG.md > release-notes.md
+    - '[ -s release-notes.md ] || { echo "CHANGELOG.md has no section for $VERSION"; exit 1; }'
+    - printf '\n### Android\n' >> release-notes.md
+    - awk -v v="$VERSION" '/^## /{p = index($0 " ", "## " v " ") == 1; next} p' android/CHANGELOG.md >> release-notes.md
   artifacts:
-    expire_in: 30 days
-    paths: [android/dist/]
+    paths: [release-notes.md]
+    expire_in: 1 week
 
 # ── release ───────────────────────────────────────────────────────────────────
 release:
   stage: release
-  image: alpine:3.20
-  needs: [android-apk, docker]
-  <<: *release-rules
-  before_script:
-    - apk add --no-cache curl jq git
+  image: registry.gitlab.com/gitlab-org/cli:latest    # glab, used by the release: keyword
+  needs: [apk, docker]
+  <<: *release
   script:
-    - sh scripts/release.sh
+    - echo "Release $CI_COMMIT_TAG"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: Mnemos $CI_COMMIT_TAG
+    description: release-notes.md
+    assets:
+      links:
+        - name: mnemos-$CI_COMMIT_TAG.apk
+          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/mnemos/$CI_COMMIT_TAG/mnemos-$CI_COMMIT_TAG.apk
+          link_type: package
+          direct_asset_path: /mnemos.apk

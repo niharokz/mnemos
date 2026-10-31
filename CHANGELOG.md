@@ -2,11 +2,17 @@
 
 This is the web app's changelog. The Android app has its own: [android/CHANGELOG.md](android/CHANGELOG.md).
 
-## Unreleased
+## 1.1.1 - 2026-10-31
 
+- **Flow view.** Every note, newest first, one per screen — scroll (or `↑`/`↓`, `j`/`k`) to the next, `Enter` opens it. The views are now **List**, **Box** (was Cards), **Tabs** and **Flow**.
+- **Cleanup** (Settings): the server's old `cleanupSync.sh`, built in and run only when you press it. Syncthing `*sync-conflict*` copies move to the trash, then trash items older than *N* days are erased (default 30, set in Settings; kept in `/state/settings.json`). A preview lists everything first; the demo can't run it. The trash ledger now records when each item was trashed, so age counts from then.
+- **Vault size** — note count and storage under the tree (and `GET /api/stats`).
+- **Home page** rewritten in the Natlas style: shorter, with Sign in, the **Android APK** (newest GitLab release, `MNEMOS_APK_URL`) and "Run your own" in three steps. The web app is always online on its own server; to keep your own notes, run your own.
+- **New icon**, minimal like Natlas and Median: a note page with a folded corner and three lines on the dark nss tile (favicon, PWA icons, Android).
 - **Bans.** 5 failed sign-ins or scanner probes (`/.env`, `/conf/.env`, `/.git/config`, `wp-admin`, `*.php` …) from one address within 24 hours ban it for 7 days: every request from it then gets `403`. Probes always get `404` and never reach the app; signed-in users are never struck, and LAN/loopback addresses are never banned unless `MNEMOS_BAN_PRIVATE=true`. Bans live in the new `mnemos-state` volume (`/state/bans.json`, mode 600) and survive restarts. `mnemos bans` lists them and `mnemos unban <ip>` lifts one without a restart. Settings: `MNEMOS_BAN_AFTER` (0 = off), `MNEMOS_BAN_DAYS`, `MNEMOS_BAN_PRIVATE`, `MNEMOS_STATE`.
-- Android: the signing key moved to `$KEYS_HOME/.mnemos-keys` (default `~/.local/share/keys/.mnemos-keys`); `build.sh` moves an old `~/.mnemos-keys` there and keeps the folder at 700 and its files at 600.
-- `./build.sh ci-secrets` prepares the local signing key for GitLab CI, and local release builds now print the signing certificate like CI does, so local and CI builds stay interchangeable. README → *Building and releasing* documents both ways and how to apply a patch zip from the gitignored `patch/` folder.
+- `POST /api/upload?path=` stores an image at an exact path (never overwriting), for the Android app's queued uploads.
+- **Settings only from `MNEMOS_*`.** The `SAMANOTE_*` fallbacks are gone — rename any left in your `.env` (see `.env.example`). New: `MNEMOS_TRASH` and `MNEMOS_APK_URL` in compose.
+- **GitLab:** a tag builds the signed APK on your own runner (tag `mnemos-apk`, no CI minutes, the key never leaves your server) and attaches it to the release as `mnemos.apk`; checks run on shared runners; issue and merge request templates; README badges. `scripts/release.sh` and the CI signing variables are no longer needed.
 
 ## 1.1.0 - 2026-10-14
 

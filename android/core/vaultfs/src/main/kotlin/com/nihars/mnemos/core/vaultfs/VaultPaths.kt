@@ -26,6 +26,13 @@ object VaultPaths {
         return norm
     }
 
+    /** A path that names something inside the trash (never the trash itself); else rejected. */
+    fun checkTrashItem(path: String): String {
+        val norm = checkWritable(path)
+        if (!norm.startsWith("$TRASH/")) throw VaultException.PathRejected(path, "only items in the trash can be erased.")
+        return norm
+    }
+
     fun name(path: String): String = path.substringAfterLast('/')
     fun parent(path: String): String = if ('/' in path) path.substringBeforeLast('/') else ""
     fun join(dir: String, name: String): String = if (dir.isEmpty()) name else "$dir/$name"

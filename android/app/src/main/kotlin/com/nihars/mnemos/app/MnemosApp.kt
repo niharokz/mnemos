@@ -30,7 +30,11 @@ class MnemosApp : Application() {
 
         // Auto-lock timer runs from when the whole app leaves the foreground.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
-            override fun onStop(owner: LifecycleOwner) = graph.lock.onBackground()
+            override fun onStop(owner: LifecycleOwner) {
+                graph.lock.onBackground()
+                WidgetUpdater.updateAll(this@MnemosApp) // fresh "2 min ago" times on the home screen
+            }
+
             override fun onStart(owner: LifecycleOwner) = graph.lock.onForeground()
         })
 
@@ -46,6 +50,8 @@ class MnemosApp : Application() {
 
         // Widgets hide note content while locked (if the privacy setting is on).
         graph.scope.launch { graph.lock.state.drop(1).collect { WidgetUpdater.updateAll(this@MnemosApp) } }
+        // Pinning or unpinning shows on the Pinned widget at once.
+        graph.scope.launch { graph.ownerSettings.pins.distinctUntilChanged().drop(1).collect { WidgetUpdater.updateAll(this@MnemosApp) } }
     }
 }
 

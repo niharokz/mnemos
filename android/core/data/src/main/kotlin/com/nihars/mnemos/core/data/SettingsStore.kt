@@ -74,8 +74,9 @@ class SettingsStore(private val store: DataStore<Preferences>) {
             newNoteFolder = p[NEW_FOLDER] ?: d.newNoteFolder,
             newNoteTemplate = p[NEW_TEMPLATE] ?: d.newNoteTemplate,
             treeSort = enumOr(p[TREE_SORT], d.treeSort),
-            homeView = enumOr(p[HOME_VIEW], d.homeView),
+            homeView = HomeView.of(p[HOME_VIEW]),
             updateFolder = p[UPDATE_FOLDER] ?: d.updateFolder,
+            cleanupDays = (p[CLEANUP_DAYS] ?: d.cleanupDays).coerceIn(1, 3650),
             editorFont = enumOr(p[FONT], d.editorFont),
             textSizeSp = p[TEXT_SIZE] ?: d.textSizeSp,
             lineHeight = p[LINE_HEIGHT] ?: d.lineHeight,
@@ -109,6 +110,7 @@ class SettingsStore(private val store: DataStore<Preferences>) {
         p[TREE_SORT] = s.treeSort.name
         p[HOME_VIEW] = s.homeView.name
         p[UPDATE_FOLDER] = s.updateFolder
+        p[CLEANUP_DAYS] = s.cleanupDays.coerceIn(1, 3650)
         p[FONT] = s.editorFont.name
         p[TEXT_SIZE] = s.textSizeSp
         p[LINE_HEIGHT] = s.lineHeight
@@ -157,6 +159,7 @@ class SettingsStore(private val store: DataStore<Preferences>) {
         val TREE_SORT = stringPreferencesKey("tree_sort")
         val HOME_VIEW = stringPreferencesKey("home_view")
         val UPDATE_FOLDER = stringPreferencesKey("update_folder")
+        val CLEANUP_DAYS = intPreferencesKey("cleanup_days")
         val FONT = stringPreferencesKey("editor_font")
         val TEXT_SIZE = intPreferencesKey("text_size")
         val LINE_HEIGHT = floatPreferencesKey("line_height")

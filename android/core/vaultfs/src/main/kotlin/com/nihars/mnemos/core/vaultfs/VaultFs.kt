@@ -16,8 +16,9 @@ data class VaultEntry(
 enum class WriteOutcome { ATOMIC, IN_PLACE }
 
 /**
- * Everything the app does to the vault goes through here. There is deliberately no delete:
- * removing a file means moving it to `.trash/` (see [Trash]).
+ * Everything the app does to the vault goes through here. Removing a file means moving it to
+ * `.trash/` (see [Trash]); only [deleteForever], used by Settings → Cleanup, erases, and only
+ * inside the trash.
  */
 interface VaultFs {
     /** Shown in Settings, e.g. the folder path or the SAF tree name. */
@@ -47,6 +48,9 @@ interface VaultFs {
 
     /** Renames or moves; never overwrites an existing target. Creates the target's parent folders. */
     fun move(from: String, to: String)
+
+    /** Erases a trash item (file or folder) for good. Refuses anything outside `.trash/`. */
+    fun deleteForever(path: String)
 
     /** Every entry below [dir]. Hidden folders are skipped unless [includeHidden]. */
     fun walk(dir: String = "", includeHidden: Boolean = false): List<VaultEntry>

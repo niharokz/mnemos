@@ -4,15 +4,11 @@
 //
 // Only container-side values live here. Host paths (NOTE_PATH), PUID/PGID and the
 // network are used by docker-compose.yml alone, so nothing host-specific is in code.
-//
-// Every MNEMOS_X falls back to SAMANOTE_X, so a .env written for Samanote keeps
-// working after the switch (a warning names each old key in use).
 package config
 
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -38,8 +34,12 @@ type Config struct {
 	BanAfter     int      // MNEMOS_BAN_AFTER, default 5 — failed sign-ins / scanner probes in 24 h that ban an IP (0 = off)
 	BanDays      int      // MNEMOS_BAN_DAYS, default 7 — how long a ban lasts
 	BanPrivate   bool     // MNEMOS_BAN_PRIVATE, default false — also ban LAN/loopback addresses
-	StateDir     string   // MNEMOS_STATE, default /state — where bans are kept across restarts
+	StateDir     string   // MNEMOS_STATE, default /state — bans and app settings, kept across restarts
+	ApkURL       string   // MNEMOS_APK_URL — the Android download on the about page (default: latest GitLab release)
 }
+
+// DefaultApkURL always serves the newest released APK.
+const DefaultApkURL = "https://gitlab.com/niharokz/mnemos/-/releases/permalink/latest/downloads/mnemos.apk"
 
 // MaxFileBytes is MaxFileMB in bytes.
 func (c Config) MaxFileBytes() int64 { return int64(c.MaxFileMB) << 20 }
@@ -76,16 +76,9 @@ func LoadDotEnv(path string) error {
 	return sc.Err()
 }
 
-// raw reads MNEMOS_<key>, falling back to the old SAMANOTE_<key>.
+// raw reads MNEMOS_<key>, trimmed.
 func raw(key string) string {
-	if v := strings.TrimSpace(os.Getenv("MNEMOS_" + key)); v != "" {
-		return v
-	}
-	if v := strings.TrimSpace(os.Getenv("SAMANOTE_" + key)); v != "" {
-		log.Printf("NOTE using SAMANOTE_%s — rename it to MNEMOS_%s in .env", key, key)
-		return v
-	}
-	return ""
+	return strings.TrimSpace(os.Getenv("MNEMOS_" + key))
 }
 
 func env(key, def string) string {
@@ -131,6 +124,7 @@ func Load() (Config, error) {
 		DemoPassword: env("DEMO_PASSWORD", "demo"),
 		BanPrivate:   strings.EqualFold(env("BAN_PRIVATE", "false"), "true"),
 		StateDir:     env("STATE", "/state"),
+		ApkURL:       env("APK_URL", DefaultApkURL),
 	}
 	for _, h := range strings.Split(raw("HIDDEN"), ",") {
 		if h = strings.Trim(strings.TrimSpace(h), "/"); h != "" {

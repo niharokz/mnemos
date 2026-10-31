@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- No INTERNET permission, on purpose: Mnemos never touches the network. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Only for server mode (Settings → Vault → Storage → your Mnemos server, https only).
+         With a phone folder the app makes no network requests at all. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Fast vault access with java.nio (spec §1); the SAF picker is the fallback. -->
     <uses-permission
@@ -33,7 +36,7 @@
         <!-- One launcher entry per logo colour; Settings → Logo colour enables exactly one. -->
         <activity-alias
             android:name=".app.LauncherTeal"
-            android:enabled="true"
+            android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_teal"
             android:roundIcon="@mipmap/ic_launcher_teal"
@@ -168,7 +171,7 @@
         </activity-alias>
         <activity-alias
             android:name=".app.LauncherBlack"
-            android:enabled="false"
+            android:enabled="true"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_black"
             android:roundIcon="@mipmap/ic_launcher_black"

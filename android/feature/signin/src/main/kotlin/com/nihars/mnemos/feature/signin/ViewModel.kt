@@ -237,6 +237,23 @@ class SetupViewModel(private val graph: AppGraph, private val vaultOnly: Boolean
         }
     }
 
+    fun chooseServer() = _state.update { it.copy(step = SetupStep.SERVER, message = null) }
+
+    /** Back from the server step to choosing a folder on the phone. */
+    fun backToFolder() {
+        _state.update { it.copy(step = SetupStep.REASON, message = null) }
+        refreshAccess()
+    }
+
+    fun useServer(url: String, user: String, password: String) {
+        _state.update { it.copy(busy = true, message = null) }
+        viewModelScope.launch {
+            val r = graph.useServer(url, user, password)
+            _state.update { it.copy(busy = false, message = r.exceptionOrNull()?.let { e -> e.message ?: "Couldn't sign in." }) }
+            if (r.isSuccess) afterVault()
+        }
+    }
+
     fun setPin(pin: String, confirm: String, biometricAvailable: Boolean) {
         val problem = PinRules.problem(pin, confirm)
         if (problem != null) {

@@ -63,7 +63,7 @@ class OpenNoteWidget : AppWidgetProvider() {
                         setTextViewText(R.id.open_title, context.getString(R.string.widget_setup))
                     } else {
                         // Names only, so the widget never shows note content.
-                        setTextViewText(R.id.open_title, VaultPaths.name(path).removeSuffix(".md"))
+                        setTextViewText(R.id.open_title, VaultPaths.stem(VaultPaths.name(path)))
                         setOnClickPendingIntent(android.R.id.background, WidgetUpdater.openIntent(context, path, 200 + id))
                     }
                 }
@@ -115,7 +115,7 @@ class QuickActionsWidget : AppWidgetProvider() {
     }
 }
 
-/** Notes opened or changed lately, newest first; names only. */
+/** Notes opened or changed lately, newest first: name, folder and when — never content. */
 class RecentNotesWidget : AppWidgetProvider() {
     override fun onUpdate(context: Context, mgr: AppWidgetManager, ids: IntArray) {
         val pending = goAsync()
@@ -134,18 +134,15 @@ class RecentNotesWidget : AppWidgetProvider() {
         suspend fun render(context: Context, mgr: AppWidgetManager, ids: IntArray) {
             if (ids.isEmpty()) return
             val paths = recent(context)
+            val fs = context.graph.ownerFs().getOrNull()
             val views = RemoteViews(context.packageName, R.layout.widget_recent)
-            val items = RemoteViews.RemoteCollectionItems.Builder().setViewTypeCount(1)
-            paths.forEachIndexed { i, p ->
-                val row = RemoteViews(context.packageName, R.layout.widget_pinned_item).apply {
-                    setTextViewText(R.id.pinned_item, VaultPaths.name(p).removeSuffix(".md"))
-                    setOnClickFillInIntent(R.id.pinned_item, Intent().putExtra(MainActivity.EXTRA_PATH, p))
-                }
-                items.addItem(i.toLong(), row)
-            }
+            val items = RemoteViews.RemoteCollectionItems.Builder().setViewTypeCount(1).setHasStableIds(true)
+            paths.forEach { p -> items.addItem(p.hashCode().toLong(), WidgetUpdater.noteRow(context, fs, p)) }
             views.setRemoteAdapter(R.id.recent_list, items.build())
             views.setViewVisibility(R.id.recent_empty, if (paths.isEmpty()) View.VISIBLE else View.GONE)
             views.setViewVisibility(R.id.recent_list, if (paths.isEmpty()) View.GONE else View.VISIBLE)
+            views.setTextViewText(R.id.recent_count, "")
+            views.setOnClickPendingIntent(R.id.recent_new, WidgetIntents.app(context, MainActivity.ACTION_NEW_NOTE, 26))
             views.setPendingIntentTemplate(R.id.recent_list, WidgetIntents.openTemplate(context, 3))
             ids.forEach { mgr.updateAppWidget(it, views) }
         }

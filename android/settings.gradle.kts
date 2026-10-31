@@ -23,5 +23,4 @@ include(
     ":feature:signin", ":feature:tree", ":feature:editor", ":feature:table",
     ":feature:viewer", ":feature:search", ":feature:conflicts",
     ":feature:recent", ":feature:settings",
-    ":benchmark",
 )

@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.nihars.mnemos.core.data.AppGraph
 import com.nihars.mnemos.core.data.AppSettings
 import com.nihars.mnemos.core.data.UserKind
+import com.nihars.mnemos.core.data.VaultCleanup
+import com.nihars.mnemos.core.data.remote.RemoteVaultFs
 import com.nihars.mnemos.core.data.VaultSession
 import com.nihars.mnemos.core.security.BiometricKeys
 import com.nihars.mnemos.core.security.PinResult
@@ -88,6 +90,40 @@ class SettingsViewModel(private val graph: AppGraph, private val session: VaultS
         session.rescan()
         say("Rebuilding the search index in the background.")
     }
+
+    /** The server when signed in to one, else null (phone folder). */
+    val remote: RemoteVaultFs? = session.fs as? RemoteVaultFs
+
+    fun syncNow() = viewModelScope.launch {
+        val r = remote ?: return@launch
+        _ui.update { it.copy(busy = true) }
+        val res = withContext(Dispatchers.IO) { runCatching { r.sync() } }
+        res.getOrNull()?.takeIf { it.isNotEmpty() }?.let { session.externalChange(it) }
+        _ui.update { it.copy(busy = false) }
+        say(res.fold({ if (r.pendingCount > 0) "Offline — ${r.pendingCount} change(s) still waiting." else "Up to date with the server." }, { "Sync failed: ${it.message}" }))
+    }
+
+    /** Cleanup: [run] = false shows what would happen, true does it (server or phone folder). */
+    fun cleanup(run: Boolean) = viewModelScope.launch {
+        val days = settings.value.cleanupDays
+        _ui.update { it.copy(busy = true) }
+        val res = runCatching {
+            val r = remote
+            if (r != null) withContext(Dispatchers.IO) { r.cleanup(days, run) } else VaultCleanup(session).run(days, dryRun = !run)
+        }
+        res.onSuccess { rep ->
+            if (run) {
+                remote?.let { session.externalChange(setOf(".trash")) }
+                session.refreshStats()
+            }
+            _ui.update { it.copy(busy = false, cleanup = rep) }
+        }.onFailure { e ->
+            _ui.update { it.copy(busy = false) }
+            say("Cleanup failed: ${e.message}")
+        }
+    }
+
+    fun cleanupDone() = _ui.update { it.copy(cleanup = null) }
 
     fun clearCaches(context: Context) = viewModelScope.launch {
         withContext(Dispatchers.IO) { context.cacheDir.listFiles()?.forEach { it.deleteRecursively() } }

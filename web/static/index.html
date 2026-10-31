@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-  <meta name="theme-color" content="#3a807a">
+  <meta name="theme-color" content="#070b0f">
   <meta name="color-scheme" content="dark light">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="description" content="Mnemos — your notes folder in the browser: markdown, CSV tables, search, sync conflicts">
@@ -43,6 +43,9 @@
     <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 3.5h6l-1 5 3.5 3.5v1.5h-11V12L10 8.5z"/><path d="M12 13.5V21"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14"/></symbol>
     <symbol id="i-follow" viewBox="0 0 24 24"><path d="M12 4v13m-5-5 5 5 5-5M6 20.5h12"/></symbol>
+    <symbol id="i-flow" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="13" rx="2"/><path d="M8 20h8M10 7.5h4M10 11h4"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></symbol>
     <symbol id="i-template" viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
   </svg>
 
@@ -75,17 +78,20 @@
       <nav class="side-nav" aria-label="Tools">
         <button class="ghost" id="nav-search" title="Search everything (Ctrl+K)"><svg class="i"><use href="#i-search"/></svg><span>Search</span></button>
         <button class="ghost" id="nav-recent" title="Recent files (Alt+R)"><svg class="i"><use href="#i-clock"/></svg><span>Recent</span></button>
-        <button class="ghost" id="nav-cards" title="Folder as cards"><svg class="i"><use href="#i-folder"/></svg><span>Cards</span></button>
+        <button class="ghost" id="nav-cards" title="Folder as boxes with previews"><svg class="i"><use href="#i-box"/></svg><span>Box</span></button>
+        <button class="ghost" id="nav-flow" title="One note at a time, newest first"><svg class="i"><use href="#i-flow"/></svg><span>Flow</span></button>
         <button class="ghost" id="nav-capture" title="Quick capture (Alt+C)"><svg class="i"><use href="#i-inbox"/></svg><span>Capture</span></button>
         <button class="ghost rw-only" id="nav-template" title="New note from a template"><svg class="i"><use href="#i-template"/></svg><span>Template</span></button>
         <button class="ghost" id="nav-conflicts" title="Syncthing conflicts"><svg class="i"><use href="#i-alert"/></svg><span>Conflicts</span><span class="badge bad" id="cf-count" hidden></span></button>
         <button class="ghost" id="nav-trash" title="Trash"><svg class="i"><use href="#i-trash"/></svg><span>Trash</span></button>
+        <button class="ghost" id="nav-settings" title="Vault size, cleanup"><svg class="i"><use href="#i-gear"/></svg><span>Settings</span></button>
       </nav>
       <div class="filter"><input type="search" id="filter" placeholder="Filter files…" aria-label="Filter files" autocomplete="off" spellcheck="false"></div>
       <div class="pins tree" id="pins"></div>
       <nav class="tree" id="tree"></nav>
       <div class="side-foot">
         <small id="ver"></small>
+        <small id="stats" title="Notes and storage in this vault"></small>
         <button class="ghost icon" id="theme-btn" title="Theme" aria-label="Theme"><svg class="i"><use href="#i-theme"/></svg></button>
         <button class="ghost icon" id="logout-btn" title="Sign out" aria-label="Sign out"><svg class="i"><use href="#i-out"/></svg></button>
       </div>
@@ -121,6 +127,7 @@
       </div>
 
       <section class="folder" id="folder" aria-label="Folder" hidden></section>
+      <section class="flowv" id="flow" aria-label="Flow" hidden></section>
       <section class="diffv" id="diff" aria-label="Sync conflict" hidden></section>
 
       <div class="welcome" id="welcome" hidden>
@@ -130,7 +137,8 @@
           <div class="w-acts">
             <button class="primary rw-only" id="welcome-new">New note</button>
             <button id="welcome-search">Search</button>
-            <button id="welcome-cards">Browse as cards</button>
+            <button id="welcome-cards">Browse as boxes</button>
+            <button id="welcome-flow">Flow</button>
           </div>
           <div id="recent"></div>
           <p class="keys"><kbd>Ctrl</kbd> <kbd>K</kbd> search · <kbd>Ctrl</kbd> <kbd>S</kbd> save · <kbd>Ctrl</kbd> <kbd>E</kbd> edit / preview · <kbd>Ctrl</kbd> <kbd>F</kbd> find · <kbd>Alt</kbd> <kbd>N</kbd> new note · <kbd>Alt</kbd> <kbd>C</kbd> capture · <kbd>Alt</kbd> <kbd>R</kbd> recent · <kbd>Alt</kbd> <kbd>B</kbd> sidebar</p>

@@ -316,3 +316,29 @@ dialog.lightbox.actual img { max-width: none; max-height: none; cursor: zoom-out
 .lb-bar span { flex: 1; }
 .lb-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; color: #e6ecec; border-radius: 9px; }
 .lb-btn:hover { background: rgba(255, 255, 255, .12); }
+
+/* ── sidebar stats ─────────────────────────────────────── */
+.side-foot { flex-wrap: wrap; }
+.side-foot #stats { flex-basis: 100%; order: -1; color: var(--nss-muted); }
+
+/* ── flow: one note per screen, snap scrolling ─────────── */
+.flowv { flex: 1; min-height: 0; display: flex; }
+.flow { flex: 1; overflow-y: auto; scroll-snap-type: y mandatory; overscroll-behavior: contain; outline: none; scroll-behavior: smooth; }
+.flow-s { position: relative; height: 100%; scroll-snap-align: start; scroll-snap-stop: always; display: flex; flex-direction: column;
+  padding: 16px clamp(14px, 4vw, 40px) 28px; border-bottom: 1px solid var(--nss-line); animation: flow-in .35s ease both; }
+.flow-h { display: flex; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--nss-line); }
+.flow-h strong { font-size: 1.15rem; }
+.flow-h small { color: var(--nss-muted); flex: 1; min-width: 0; }
+.flow-b { flex: 1; min-height: 0; overflow-y: auto; padding-top: 12px; max-width: 46rem; width: 100%; margin: 0 auto; }
+.flow-n { position: absolute; right: 14px; bottom: 8px; color: var(--nss-muted); }
+@keyframes flow-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .flow { scroll-behavior: auto; } .flow-s { animation: none; } }
+
+/* ── settings sheet ────────────────────────────────────── */
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 8px; }
+.kv dt { color: var(--nss-muted); }
+.kv dd { margin: 0; font-family: var(--nss-mono); }
+.sheet-b h3 { margin: 18px 0 6px; font-size: .95rem; }
+.cl-acts { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.cl-list { max-height: 30vh; overflow-y: auto; margin: 6px 0 0; padding-left: 1rem; font-size: .8rem; }
+.cl-list .bad { color: var(--nss-bad, #d63c3c); }

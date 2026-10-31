@@ -33,6 +33,8 @@ type Options struct {
 	TemplatesDir string       // vault folder listed by "New from template"
 	MaxUploadMB  int          // largest image that can be added to a note
 	Guard        *guard.Guard // bans IPs after repeated failures and scanner probes; nil = off
+	StateDir     string       // where instance settings (cleanup days) are kept; "" = memory only
+	ApkURL       string       // download link for the Android app on the about page
 }
 
 // Limits for the http.Server.
@@ -49,7 +51,7 @@ const (
 func New(a *auth.Auth, opt Options) http.Handler {
 	mux := http.NewServeMux()
 	rt := &httpx.Router{Mux: mux, Resolve: a.Resolve}
-	api := &api{opt: opt, indexes: map[*vault.Vault]*search.Index{}}
+	api := &api{opt: opt, prefs: newPrefs(opt.StateDir), indexes: map[*vault.Vault]*search.Index{}}
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	a.Register(mux)
@@ -63,6 +65,11 @@ func New(a *auth.Auth, opt Options) http.Handler {
 	rt.Handle("GET /api/templates", api.templates)
 	rt.Handle("GET /api/trash", api.trashList)
 	rt.Handle("GET /api/conflicts", api.conflicts)
+	rt.Handle("GET /api/stats", api.stats)
+	rt.Handle("GET /api/settings", api.settingsGet)
+	rt.Handle("PUT /api/settings", api.settingsPut)
+	rt.Handle("GET /api/cleanup", api.cleanupPreview)
+	rt.Handle("POST /api/cleanup", api.cleanupRun)
 	rt.Handle("PUT /api/file", api.write)
 	rt.Handle("POST /api/new", api.create)
 	rt.Handle("POST /api/move", api.move)
@@ -70,6 +77,7 @@ func New(a *auth.Auth, opt Options) http.Handler {
 	rt.Handle("POST /api/restore", api.restore)
 	rt.Handle("POST /api/capture", api.capture)
 	rt.Handle("POST /api/attach", api.attach)
+	rt.Handle("POST /api/upload", api.upload)
 	rt.Handle("POST /api/conflicts/resolve", api.resolve)
 	rt.HandleSafe("POST /api/render", api.render)
 	rt.Handle("GET /raw/{path...}", api.raw)
@@ -78,7 +86,7 @@ func New(a *auth.Auth, opt Options) http.Handler {
 	})
 
 	static, _ := fs.Sub(web.Files, "static")
-	assets := newAssets(static, opt.Version)
+	assets := newAssets(static, opt.Version, opt.ApkURL)
 	mux.HandleFunc("GET /{$}", assets.page("landing.html")) // public about page
 	mux.HandleFunc("GET /app", assets.page("index.html"))   // the app (sign-in card when signed out)
 	mux.HandleFunc("GET /app/", func(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +142,7 @@ func (s *statusWriter) WriteHeader(code int) {
 type assets struct {
 	fsys    fs.FS
 	version string // replaces {{VERSION}} in HTML
+	apkURL  string // replaces {{APK_URL}} in HTML
 	mu      sync.Mutex
 	cache   map[string]*asset
 }
@@ -143,8 +152,8 @@ type asset struct {
 	etag, ct string
 }
 
-func newAssets(fsys fs.FS, version string) *assets {
-	return &assets{fsys: fsys, version: version, cache: map[string]*asset{}}
+func newAssets(fsys fs.FS, version, apkURL string) *assets {
+	return &assets{fsys: fsys, version: version, apkURL: apkURL, cache: map[string]*asset{}}
 }
 
 func (s *assets) get(name string) (*asset, error) {
@@ -159,6 +168,7 @@ func (s *assets) get(name string) (*asset, error) {
 	}
 	if strings.HasSuffix(name, ".html") {
 		b = bytes.ReplaceAll(b, []byte("{{VERSION}}"), []byte(html.EscapeString(s.version)))
+		b = bytes.ReplaceAll(b, []byte("{{APK_URL}}"), []byte(html.EscapeString(s.apkURL)))
 	}
 	sum := sha256.Sum256(b)
 	a := &asset{body: b, etag: `"` + hex.EncodeToString(sum[:8]) + `"`, ct: mime.TypeByExtension(path.Ext(name))}

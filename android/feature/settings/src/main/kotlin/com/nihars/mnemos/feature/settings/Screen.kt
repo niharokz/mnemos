@@ -1,7 +1,6 @@
 package com.nihars.mnemos.feature.settings
 
 import android.content.Intent
-import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -53,6 +52,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nihars.mnemos.core.data.EditorFont
+import com.nihars.mnemos.core.data.Format
+import com.nihars.mnemos.core.data.remote.RemoteStatus
 import com.nihars.mnemos.core.data.LocalAppGraph
 import com.nihars.mnemos.core.data.ToolbarItem
 import com.nihars.mnemos.core.data.VaultSession
@@ -75,7 +76,9 @@ import com.nihars.mnemos.core.security.Biometric
 import com.nihars.mnemos.core.security.BiometricOutcome
 import com.nihars.mnemos.core.security.findFragmentActivity
 import com.nihars.mnemos.core.vaultfs.TreeSort
+import kotlinx.coroutines.flow.flowOf
 import kotlin.math.roundToInt
+import androidx.core.net.toUri
 
 /** A text field to edit, shown in [NameDialog]. */
 private data class TextEditSpec(val title: String, val label: String, val value: String, val apply: (String) -> Unit)
@@ -111,6 +114,10 @@ fun SettingsScreen(
     var pickFolder by remember { mutableStateOf(false) }
     var logoPicker by remember { mutableStateOf(false) }
     val ownerName by graph.ownerName.collectAsStateWithLifecycle(initialValue = "")
+    val stats by session.stats.collectAsStateWithLifecycle()
+    val remote = vm.remote
+    val server by (remote?.status ?: flowOf(RemoteStatus())).collectAsStateWithLifecycle(initialValue = RemoteStatus())
+    var cleanupDaysOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(ui.message) {
         ui.message?.let {
@@ -135,23 +142,36 @@ fun SettingsScreen(
             item { Section("Vault") }
             item {
                 Row2(
-                    "Folder",
-                    ui.vaultLabel + (if (!ui.fastAccess) " · slower mode" else ""),
+                    if (remote != null) "Storage" else "Folder",
+                    if (remote != null) "Mnemos server · ${ui.vaultLabel}" else ui.vaultLabel + (if (!ui.fastAccess) " · slower mode" else ""),
                     onClick = if (ui.isDemo) null else onChangeVault,
                 )
             }
-            if (!ui.isDemo) {
+            if (remote != null) {
+                item {
+                    val state = when {
+                        !server.online -> "Offline — edits are kept on the phone"
+                        server.pending > 0 -> "Online · ${server.pending} change(s) to send"
+                        else -> "Online"
+                    }
+                    val last = if (server.lastSync > 0) " · synced ${Format.relative(server.lastSync)}" else ""
+                    Row2("Sync now", state + last + (server.error?.let { "\n$it" }.orEmpty()) + (if (ui.busy) " …" else "")) { vm.syncNow() }
+                }
+            } else if (!ui.isDemo) {
                 item {
                     Row2(
                         "All files access",
                         if (graph.hasAllFilesAccess()) "Granted" else "Not granted (slower mode)",
                         onClick = {
                             runCatching {
-                                context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
+                                context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, "package:${context.packageName}".toUri()))
                             }
                         },
                     )
                 }
+            }
+            item {
+                Row2("In this vault", stats?.let { "%,d notes · %,d files · %s".format(it.notes, it.files, Format.size(it.bytes)) } ?: "Counting …") { session.refreshStats() }
             }
             item {
                 Row2("Hidden patterns", s.hiddenPatterns.joinToString(", ").ifEmpty { "Defaults only (.*, *.lock, *.tmp, ~*)" }) {
@@ -179,6 +199,17 @@ fun SettingsScreen(
                 }
             }
             item { Row2("Trash", "Restore moved files", onClick = onOpenTrash) }
+
+            item { Section("Cleanup") }
+            item { Row2("Keep trash for", "${s.cleanupDays} days") { cleanupDaysOpen = true } }
+            item {
+                Row2(
+                    "Clean up now",
+                    "Moves Syncthing conflict copies to the trash, then erases trash older than ${s.cleanupDays} days" +
+                        (if (remote != null) " (on the server)" else "") + (if (ui.busy) " …" else ""),
+                    onClick = if (ui.isDemo) null else ({ vm.cleanup(run = false) }),
+                )
+            }
 
             item { Section("Editor") }
             item {
@@ -297,7 +328,7 @@ fun SettingsScreen(
             item { Row2("Update folder", s.updateFolder) { text = TextEditSpec("Update folder", "Folder in vault", s.updateFolder) { v -> vm.update { it.copy(updateFolder = v.trim('/')) } } } }
 
             item { Section("About") }
-            item { Row2("Mnemos", "Offline notes over plain files. MIT licence.") }
+            item { Row2("Mnemos", "Notes over plain files — on the phone or on your own server. MIT licence.") }
             item { Row2("Open-source licences", "Libraries and fonts used") { licences = true } }
             item { Row2(if (ui.isDemo) "Leave demo" else "Sign out", "Back to the sign-in screen", onClick = onSignOut) }
             item { Spacer(Modifier.heightIn(min = 48.dp)) }
@@ -312,6 +343,11 @@ fun SettingsScreen(
         }, selectStem = false)
     }
     choice?.let { c -> ChoiceDialog(c) { choice = null } }
+    if (cleanupDaysOpen) {
+        val days = listOf(7, 14, 30, 60, 90, 180, 365)
+        ChoiceDialog(ChoiceSpec("Keep trash for", days.map { "$it days" }, days.indexOf(s.cleanupDays)) { i -> vm.update { it.copy(cleanupDays = days[i]) } }) { cleanupDaysOpen = false }
+    }
+    ui.cleanup?.let { rep -> CleanupDialog(rep, onRun = { vm.cleanup(run = true) }, onDismiss = vm::cleanupDone) }
     color?.let { c ->
         ColorPickerDialog(c.title, c.current, c.swatches, onDismiss = { color = null }) { v ->
             c.apply(v)
@@ -347,7 +383,7 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     if (Updater.needsPermission(context)) {
-                        context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}")))
+                        context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, "package:${context.packageName}".toUri()))
                     } else {
                         vm.install(context)
                     }
@@ -507,5 +543,34 @@ private fun ToolbarDialog(current: List<ToolbarItem>, onDismiss: () -> Unit, onS
             }) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Cleanup preview (asks to go ahead) or the result of a run. */
+@Composable
+private fun CleanupDialog(rep: com.nihars.mnemos.core.data.CleanupReport, onRun: () -> Unit, onDismiss: () -> Unit) {
+    val nothing = rep.moved.isEmpty() && rep.deleted.isEmpty()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (rep.dryRun) "Clean up?" else "Cleaned up") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (nothing) {
+                    Text("Nothing to do: no conflict copies, and nothing in the trash is older than ${rep.days} days.")
+                } else {
+                    Text("${rep.moved.size} conflict cop${if (rep.moved.size == 1) "y" else "ies"} ${if (rep.dryRun) "will be moved" else "moved"} to the trash")
+                    rep.moved.take(20).forEach { Text("· $it", style = MaterialTheme.typography.bodySmall, color = Nss.colors.muted) }
+                    if (rep.moved.size > 20) Text("… and ${rep.moved.size - 20} more", style = MaterialTheme.typography.bodySmall, color = Nss.colors.muted)
+                    Text("${rep.deleted.size} trash item(s) older than ${rep.days} days ${if (rep.dryRun) "will be erased" else "erased"} · ${Format.size(rep.freedBytes)}")
+                    rep.deleted.take(20).forEach { Text("· $it", style = MaterialTheme.typography.bodySmall, color = Nss.colors.muted) }
+                    if (rep.deleted.size > 20) Text("… and ${rep.deleted.size - 20} more", style = MaterialTheme.typography.bodySmall, color = Nss.colors.muted)
+                    if (rep.dryRun && rep.deleted.isNotEmpty()) Text("Erased items can't be restored.", color = Nss.colors.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            if (rep.dryRun && !nothing) TextButton(onClick = onRun) { Text("Clean up") } else TextButton(onClick = onDismiss) { Text("Done") }
+        },
+        dismissButton = { if (rep.dryRun && !nothing) TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

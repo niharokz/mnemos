@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.util.SizeF
 import android.view.View
 import android.widget.RemoteViews
@@ -15,6 +16,9 @@ import com.nihars.mnemos.app.MainActivity
 import com.nihars.mnemos.app.graph
 import com.nihars.mnemos.core.data.FileKind
 import com.nihars.mnemos.core.data.FileKinds
+import com.nihars.mnemos.core.data.Format
+import com.nihars.mnemos.core.vaultfs.VaultEntry
+import com.nihars.mnemos.core.vaultfs.VaultFs
 import com.nihars.mnemos.core.security.LockState
 import com.nihars.mnemos.core.text.TextCodec
 import com.nihars.mnemos.core.text.TextDetector
@@ -24,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import androidx.core.content.edit
 
 /** Home-screen widgets as plain RemoteViews (no Glance), rendered on a background thread. */
 object WidgetUpdater {
@@ -51,13 +56,30 @@ object WidgetUpdater {
         return sec.widgetPrivacy && sec.pin != null && g.lock.state.value != LockState.UNLOCKED
     }
 
+    /**
+     * Opens exactly [path]. The path is also the intent's data, so every note gets its own
+     * PendingIntent: two widgets can never overwrite each other's target.
+     */
     fun openIntent(context: Context, path: String, requestCode: Int): PendingIntent {
         val i = Intent(context, MainActivity::class.java)
             .setAction(MainActivity.ACTION_OPEN)
+            .setData(Uri.Builder().scheme("mnemos").authority("open").appendPath(path).build())
             .putExtra(MainActivity.EXTRA_PATH, path)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         return PendingIntent.getActivity(context, requestCode, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
+
+    /** "projects · 2 h ago" under a note's name; names and times only, never content. */
+    fun meta(path: String, e: VaultEntry?): String =
+        listOf(VaultPaths.parent(path).ifEmpty { "~" }, e?.let { Format.relative(it.modified) }.orEmpty()).filter { it.isNotEmpty() }.joinToString(" · ")
+
+    /** One card row for a list widget; the tap fills in its path on the list's template. */
+    fun noteRow(context: Context, fs: VaultFs?, path: String): RemoteViews =
+        RemoteViews(context.packageName, R.layout.widget_note_item).apply {
+            setTextViewText(R.id.note_title, VaultPaths.stem(VaultPaths.name(path)))
+            setTextViewText(R.id.note_meta, meta(path, fs?.let { runCatching { it.stat(path) }.getOrNull() }))
+            setOnClickFillInIntent(R.id.note_item, Intent().putExtra(MainActivity.EXTRA_PATH, path))
+        }
 
     internal val scopeForReceivers get() = scope
 }
@@ -81,7 +103,7 @@ class QuickCaptureWidget : AppWidgetProvider() {
     }
 }
 
-/** The owner's pinned notes; titles only, so they show even while locked. */
+/** The owner's pinned notes; names and times only, so they show even while locked. */
 class PinnedNotesWidget : AppWidgetProvider() {
     override fun onUpdate(context: Context, mgr: AppWidgetManager, ids: IntArray) {
         val pending = goAsync()
@@ -98,21 +120,16 @@ class PinnedNotesWidget : AppWidgetProvider() {
         suspend fun render(context: Context, mgr: AppWidgetManager, ids: IntArray) {
             if (ids.isEmpty()) return
             val pins = context.graph.ownerSettings.pins.first()
+            val fs = context.graph.ownerFs().getOrNull()
             val views = RemoteViews(context.packageName, R.layout.widget_pinned)
-            val items = RemoteViews.RemoteCollectionItems.Builder().setViewTypeCount(1)
-            pins.forEachIndexed { i, p ->
-                val row = RemoteViews(context.packageName, R.layout.widget_pinned_item).apply {
-                    setTextViewText(R.id.pinned_item, VaultPaths.name(p).removeSuffix(".md"))
-                    setOnClickFillInIntent(R.id.pinned_item, Intent().putExtra(MainActivity.EXTRA_PATH, p))
-                }
-                items.addItem(i.toLong(), row)
-            }
+            val items = RemoteViews.RemoteCollectionItems.Builder().setViewTypeCount(1).setHasStableIds(true)
+            pins.forEach { p -> items.addItem(p.hashCode().toLong(), WidgetUpdater.noteRow(context, fs, p)) }
             views.setRemoteAdapter(R.id.pinned_list, items.build())
             views.setViewVisibility(R.id.pinned_empty, if (pins.isEmpty()) View.VISIBLE else View.GONE)
             views.setViewVisibility(R.id.pinned_list, if (pins.isEmpty()) View.GONE else View.VISIBLE)
-            // Template intent; each row fills in its path. Mutable so the fill-in can be merged.
-            val template = Intent(context, MainActivity::class.java).setAction(MainActivity.ACTION_OPEN).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            views.setPendingIntentTemplate(R.id.pinned_list, PendingIntent.getActivity(context, 2, template, PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+            views.setTextViewText(R.id.pinned_count, if (pins.isEmpty()) "" else pins.size.toString())
+            views.setOnClickPendingIntent(R.id.pinned_new, WidgetIntents.app(context, MainActivity.ACTION_NEW_NOTE, 25))
+            views.setPendingIntentTemplate(R.id.pinned_list, WidgetIntents.openTemplate(context, 2))
             ids.forEach { mgr.updateAppWidget(it, views) }
         }
     }
@@ -143,15 +160,17 @@ class NotePreviewWidget : AppWidgetProvider() {
                 val views = RemoteViews(context.packageName, R.layout.widget_preview)
                 if (path == null || fs == null) {
                     views.setTextViewText(R.id.preview_title, context.getString(R.string.widget_preview))
+                    views.setTextViewText(R.id.preview_meta, "")
                     views.setTextViewText(R.id.preview_body, context.getString(R.string.widget_setup))
                 } else {
-                    views.setTextViewText(R.id.preview_title, VaultPaths.name(path).removeSuffix(".md"))
+                    views.setTextViewText(R.id.preview_title, VaultPaths.stem(VaultPaths.name(path)))
+                    views.setTextViewText(R.id.preview_meta, WidgetUpdater.meta(path, runCatching { fs.stat(path) }.getOrNull()))
                     val body = if (hidden) {
                         context.getString(R.string.widget_locked)
                     } else {
                         runCatching {
                             val head = fs.readHead(path, 4096)
-                            if (TextDetector.detect(head) == null) "" else TextCodec.decode(head).text.lines().filter { it.isNotBlank() }.take(12).joinToString("\n")
+                            if (TextDetector.detect(head) == null) "" else TextCodec.decode(head).text.lines().let(::readable).take(12).joinToString("\n")
                         }.getOrDefault("")
                     }
                     views.setTextViewText(R.id.preview_body, body)
@@ -163,12 +182,24 @@ class NotePreviewWidget : AppWidgetProvider() {
     }
 }
 
+/** Note lines as a widget shows them: front matter dropped, heading marks and tasks tidied. */
+internal fun readable(lines: List<String>): List<String> {
+    var body = lines
+    if (body.firstOrNull()?.trim() == "---") {
+        val end = body.drop(1).indexOfFirst { it.trim() == "---" }
+        if (end >= 0) body = body.drop(end + 2)
+    }
+    return body.filter { it.isNotBlank() }.map { l ->
+        l.replace(Regex("^#{1,6}\\s+"), "").replace(Regex("^(\\s*)[-*] \\[ \\]"), "$1☐").replace(Regex("^(\\s*)[-*] \\[[xX]\\]"), "$1☑").replace(Regex("^(\\s*)[-*] "), "$1• ")
+    }
+}
+
 /** Which note each preview widget shows; app-private, never in the vault. */
 object WidgetPrefs {
     private fun prefs(c: Context) = c.getSharedPreferences("widgets", Context.MODE_PRIVATE)
     fun path(c: Context, id: Int): String? = prefs(c).getString("preview_$id", null)
-    fun set(c: Context, id: Int, path: String) = prefs(c).edit().putString("preview_$id", path).apply()
-    fun clear(c: Context, id: Int) = prefs(c).edit().remove("preview_$id").apply()
+    fun set(c: Context, id: Int, path: String) = prefs(c).edit { putString("preview_$id", path) }
+    fun clear(c: Context, id: Int) = prefs(c).edit { remove("preview_$id") }
 
     /** A note was renamed or moved in the app: every widget showing [from] now shows [to]. */
     fun renamed(c: Context, from: String, to: String) {
@@ -184,7 +215,7 @@ object WidgetPrefs {
             }
         }
         if (moved.isEmpty()) return
-        p.edit().apply { moved.forEach { (k, v) -> putString(k, v) } }.apply()
+        p.edit { moved.forEach { (k, v) -> putString(k, v) } }
         WidgetUpdater.updateAll(c)
     }
 

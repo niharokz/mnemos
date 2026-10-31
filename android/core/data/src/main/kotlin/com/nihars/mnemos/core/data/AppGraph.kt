@@ -16,6 +16,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.nihars.mnemos.core.data.remote.RemoteVaultFs
+import com.nihars.mnemos.core.data.remote.ServerAccount
+import com.nihars.mnemos.core.data.remote.ServerClient
 import com.nihars.mnemos.core.index.IndexDb
 import com.nihars.mnemos.core.security.LockManager
 import com.nihars.mnemos.core.security.LockStore
@@ -32,13 +35,19 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.core.net.toUri
 
-/** Where the owner's vault is: a real folder (fast) or a SAF tree (slower mode). */
-data class VaultLocation(val path: String? = null, val safTree: String? = null) {
-    val isSet: Boolean get() = path != null || safTree != null
+/**
+ * Where the owner's vault is: a real folder (fast), a SAF tree (slower mode), or a Mnemos
+ * server (Settings → Storage; the phone keeps a cache and queues edits made offline).
+ */
+data class VaultLocation(val path: String? = null, val safTree: String? = null, val server: ServerAccount? = null) {
+    val isSet: Boolean get() = path != null || safTree != null || server != null
 }
 
 /**
@@ -69,21 +78,78 @@ class AppGraph(val app: Application) {
     /** Owner file moved or renamed by the app (old path, new path); widgets re-point to it. */
     var onOwnerMoved: (String, String) -> Unit = { _, _ -> }
 
-    val vaultLocation: Flow<VaultLocation> = boot.data.map { VaultLocation(it[VAULT_PATH], it[SAF_TREE]) }
+    val vaultLocation: Flow<VaultLocation> = boot.data.map { p ->
+        val server = p[SERVER_URL]?.let { url -> ServerAccount(url, p[SERVER_USER].orEmpty(), p[SERVER_COOKIE].orEmpty()) }
+        VaultLocation(p[VAULT_PATH], p[SAF_TREE], server)
+    }
 
     /** The owner's name, asked once at setup so the app can greet them. */
     val ownerName: Flow<String> = boot.data.map { it[OWNER_NAME].orEmpty() }
 
     suspend fun setOwnerName(name: String) = boot.edit { it[OWNER_NAME] = name.trim().take(40) }
 
-    suspend fun setVaultPath(path: String) = boot.edit {
-        it[VAULT_PATH] = path
-        it.remove(SAF_TREE)
+    suspend fun setVaultPath(path: String) {
+        leaveServer()
+        boot.edit {
+            it[VAULT_PATH] = path
+            it.remove(SAF_TREE)
+        }
     }
 
-    suspend fun setSafTree(uri: Uri) = boot.edit {
-        it[SAF_TREE] = uri.toString()
-        it.remove(VAULT_PATH)
+    suspend fun setSafTree(uri: Uri) {
+        leaveServer()
+        boot.edit {
+            it[SAF_TREE] = uri.toString()
+            it.remove(VAULT_PATH)
+        }
+    }
+
+    /**
+     * Signs in to a Mnemos server and makes it the owner's storage. [url] may omit https://;
+     * only https is accepted (passwords and notes never travel in clear text).
+     */
+    suspend fun useServer(url: String, user: String, password: String): Result<ServerAccount> = withContext(Dispatchers.IO) {
+        val clean = url.trim().trimEnd('/').let { if ("://" in it) it else "https://$it" }
+        if (!clean.startsWith("https://")) return@withContext Result.failure(IllegalArgumentException("Use the server's https:// address."))
+        runCatching { ServerClient(clean).login(user.trim(), password) }
+            .mapCatching { acc ->
+                if (acc.readOnly) error("That is the read-only demo account. Sign in with your own account.")
+                boot.edit {
+                    it[SERVER_URL] = acc.url
+                    it[SERVER_USER] = acc.user
+                    it[SERVER_COOKIE] = acc.cookie
+                    it.remove(VAULT_PATH)
+                    it.remove(SAF_TREE)
+                }
+                remote = null
+                acc
+            }
+    }
+
+    /** Signs out of the server and forgets its cache (pending edits are lost, so the UI asks first). */
+    private suspend fun leaveServer() {
+        val loc = vaultLocation.first()
+        if (loc.server != null) {
+            runCatching { withContext(Dispatchers.IO) { ServerClient(loc.server.url, loc.server.cookie).logout() } }
+            remoteFor(loc.server).clearCache()
+            remote = null
+            boot.edit {
+                it.remove(SERVER_URL)
+                it.remove(SERVER_USER)
+                it.remove(SERVER_COOKIE)
+            }
+        }
+    }
+
+    // One cache/queue per server account, shared by the session, widgets and quick capture.
+    @Volatile
+    private var remote: RemoteVaultFs? = null
+
+    @Synchronized
+    fun remoteFor(acc: ServerAccount): RemoteVaultFs {
+        remote?.let { if (it.rootLabel == acc.host) return it }
+        val home = File(app.filesDir, "server/" + acc.host.replace(Regex("[^A-Za-z0-9.-]"), "_"))
+        return RemoteVaultFs(ServerClient(acc.url, acc.cookie), home, acc.host).also { remote = it }
     }
 
     /** True when All files access is granted (the fast path). */
@@ -93,6 +159,7 @@ class AppGraph(val app: Application) {
     suspend fun ownerFs(): Result<VaultFs> {
         val loc = vaultLocation.first()
         return when {
+            loc.server != null -> Result.success(remoteFor(loc.server))
             loc.path != null -> {
                 if (!hasAllFilesAccess()) return Result.failure(IllegalStateException("Mnemos needs All files access to open “${loc.path}”."))
                 val dir = File(loc.path)
@@ -100,7 +167,7 @@ class AppGraph(val app: Application) {
                 Result.success(NioVaultFs(dir.toPath()))
             }
             loc.safTree != null -> {
-                val uri = Uri.parse(loc.safTree)
+                val uri = loc.safTree.toUri()
                 val granted = app.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isWritePermission }
                 if (!granted) return Result.failure(IllegalStateException("Access to the vault folder was removed. Choose it again in Settings → Vault."))
                 Result.success(SafVaultFs(app.contentResolver, uri))
@@ -137,6 +204,16 @@ class AppGraph(val app: Application) {
             s.onMoved = { from, to -> onOwnerMoved(from, to) }
             s.scope.launch { s.changes.debounce(1000).collect { onVaultChanged() } }
         }
+        // Server mode: send queued edits and pick up changes made elsewhere, every 30 s.
+        if (fs is RemoteVaultFs) {
+            s.scope.launch(Dispatchers.IO) {
+                while (isActive) {
+                    val changed = runCatching { fs.sync() }.getOrDefault(emptySet())
+                    if (changed.isNotEmpty()) s.externalChange(changed)
+                    delay(SYNC_EVERY_MS)
+                }
+            }
+        }
         return s
     }
 
@@ -144,6 +221,10 @@ class AppGraph(val app: Application) {
         val VAULT_PATH = stringPreferencesKey("vault_path")
         val SAF_TREE = stringPreferencesKey("saf_tree")
         val OWNER_NAME = stringPreferencesKey("owner_name")
+        val SERVER_URL = stringPreferencesKey("server_url")
+        val SERVER_USER = stringPreferencesKey("server_user")
+        val SERVER_COOKIE = stringPreferencesKey("server_cookie")
+        const val SYNC_EVERY_MS = 30_000L
     }
 }
 

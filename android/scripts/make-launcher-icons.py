@@ -1,30 +1,24 @@
 #!/usr/bin/env python3
 """Generates the launcher icon set (one per logo colour) from the Mnemos mark.
 
-The shapes match core/design/.../Logo.kt. Run from the repo root after changing the mark:
-    python3 scripts/make-launcher-icons.py
+The shapes and colour rules match core/design/.../Logo.kt (MnemosLogo). Run from android/
+after changing the mark:  python3 scripts/make-launcher-icons.py
 """
 import os
 
-PRESETS = [  # key, badge colour ("" = transparent)
-    ("teal", "#3A807A"), ("blue", "#1D4ED8"), ("indigo", "#4F46E5"), ("violet", "#7C3AED"),
-    ("rose", "#BE185D"), ("red", "#DC2626"), ("orange", "#EA580C"), ("green", "#2E7D32"),
-    ("slate", "#475569"), ("black", "#111827"), ("white", "#FFFFFF"), ("transparent", ""),
+PRESETS = [  # key, badge colour ("" = transparent); keep in step with LogoColors.kt
+    ("black", "#070B0F"), ("teal", "#3A807A"), ("blue", "#1D4ED8"), ("indigo", "#4F46E5"),
+    ("violet", "#7C3AED"), ("rose", "#BE185D"), ("red", "#DC2626"), ("orange", "#EA580C"),
+    ("green", "#2E7D32"), ("slate", "#475569"), ("white", "#FFFFFF"), ("transparent", ""),
 ]
-TEAL = "#3A807A"
-PAGE = "M6 2.5h8.6l4.4 4.4v12.6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2z"
-FOLD = "M14.6 2.5v3.4a1 1 0 0 0 1 1h3.4"
-LINES = "M7 16.6h4.6M7 18.8h3"
-BRAIN = [
-    "M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z",
-    "M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z",
-    "M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4", "M17.599 6.5a3 3 0 0 0 .399-1.375",
-    "M6.003 5.125A3 3 0 0 0 6.401 6.5", "M3.477 10.896a4 4 0 0 1 .585-.396", "M19.938 10.5a4 4 0 0 1 .585.396",
-]
-PEN_BODY = "M15.132 14.332L20.719 19.919"
-PEN_NIB = "M13.506 14.332L12.764 11.964L15.132 12.706Z"
-PEN_BAND = "M18.951 19.777L20.577 18.151"
+PAGE = "M7.31 4.31H13.88L17.44 7.88V19.13Q17.44 19.69 16.88 19.69H7.88Q7.31 19.69 7.31 19.13Z"
+FOLD = "M13.88 4.31L17.44 7.88H14.44Q13.88 7.88 13.88 7.31Z"
+LINES = ["M12.28 11.63H14.81", "M10.22 14.34H14.81", "M10.22 17.06H12.75"]
+DOT = "M9.38 11.63a0.84 0.84 0 1 0 1.68 0a0.84 0.84 0 1 0 -1.68 0Z"
+STROKE = "1.31"
 RES = "app/src/main/res"
+# nss palette
+TEAL, MINT, LILAC, INDIGO = "#3A807A", "#66BDB3", "#A9B8FF", "#5B6FD6"
 
 
 def lum(hexc):
@@ -38,55 +32,36 @@ def contrast(a, b):
     return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
 
 
-def mix_black(hexc, t):
-    r, g, b = (int(hexc[i:i + 2], 16) for i in (1, 3, 5))
-    return "#%02X%02X%02X" % tuple(int(c * (1 - t)) for c in (r, g, b))
-
-
-def ink_for(badge):
-    # Same rule as MnemosLogo.colorsFor: badge colour if it reads on white paper, else teal.
-    return badge if badge and contrast(badge, "#FFFFFF") >= 3.0 else TEAL
+def colors(badge):
+    # Same rule as MnemosLogo.colorsFor: palette on dark/transparent, deeper on white, white on colour.
+    if not badge or contrast(badge, "#000000") < 2.0:
+        return dict(page=TEAL, fold=LILAC, dot=LILAC, lines=MINT, lines_a="1")
+    if contrast(badge, "#FFFFFF") < 1.6:
+        return dict(page=TEAL, fold=INDIGO, dot=INDIGO, lines=TEAL, lines_a="1")
+    return dict(page="#FFFFFF", fold="#FFFFFF", dot="#FFFFFF", lines="#FFFFFF", lines_a="0.92")
 
 
 def path(d, **a):
     attrs = " ".join(f'android:{k}="{v}"' for k, v in a.items())
-    return f'            <path android:pathData="{d}" {attrs} />'
+    return f'        <path android:pathData="{d}" {attrs} />'
 
 
-def mark(ink, edge, mono=False):
-    out = []
-    if mono:
-        # Monochrome: outlines only, Android tints the whole layer.
-        out.append(path(PAGE, strokeColor="#FFFFFF", strokeWidth="1.1", strokeLineJoin="round"))
-        out.append(path(FOLD, strokeColor="#FFFFFF", strokeWidth="1.1", strokeLineJoin="round"))
-    else:
-        out.append(path(PAGE, fillColor="#FFFFFF", strokeColor=edge, strokeWidth="0.7", strokeLineJoin="round"))
-        out.append(path(FOLD, strokeColor=edge, strokeWidth="0.7", strokeLineJoin="round"))
-    col = "#FFFFFF" if mono else ink
-    out.append('            <group android:scaleX="0.5" android:scaleY="0.5" android:translateX="5" android:translateY="4.3">')
-    for d in BRAIN:
-        out.append("    " + path(d, strokeColor=col, strokeWidth="2.4", strokeLineCap="round", strokeLineJoin="round"))
-    out.append("            </group>")
-    out.append(path(LINES, strokeColor=col, strokeAlpha="0.55", strokeWidth="1.1", strokeLineCap="round"))
-    if mono:
-        out.append(path(PEN_BODY, strokeColor="#FFFFFF", strokeWidth="2.3", strokeLineCap="round"))
-        out.append(path(PEN_NIB, fillColor="#FFFFFF"))
-    else:
-        out.append(path(PEN_BODY, strokeColor=edge, strokeWidth="3.7", strokeLineCap="round"))
-        out.append(path(PEN_BODY, strokeColor=ink, strokeWidth="2.3", strokeLineCap="round"))
-        out.append(path(PEN_NIB, fillColor=ink, strokeColor=edge, strokeWidth="0.7", strokeLineJoin="round"))
-        out.append(path(PEN_BAND, strokeColor=edge, strokeWidth="0.7"))
+def mark(c):
+    out = [path(PAGE, strokeColor=c["page"], strokeWidth=STROKE, strokeLineJoin="round"),
+           path(FOLD, fillColor=c["fold"], strokeColor=c["fold"], strokeWidth="0.56", strokeLineJoin="round"),
+           path(DOT, fillColor=c["dot"])]
+    out += [path(d, strokeColor=c["lines"], strokeAlpha=c["lines_a"], strokeWidth=STROKE, strokeLineCap="round") for d in LINES]
     return "\n".join(out)
 
 
-def foreground(ink, edge, note, mono=False):
+def foreground(c, note):
     return f'''<?xml version="1.0" encoding="utf-8"?>
 <!-- Generated by scripts/make-launcher-icons.py. {note} -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <!-- The 24-unit mark at 2.2x, centred, so page corners and pen stay inside the round mask. -->
-    <group android:scaleX="2.2" android:scaleY="2.2" android:translateX="27.6" android:translateY="27.6">
-{mark(ink, edge, mono)}
+    <!-- The 24-unit mark at 3x, centred inside the 66dp safe circle. -->
+    <group android:scaleX="3" android:scaleY="3" android:translateX="16.9" android:translateY="18">
+{mark(c)}
     </group>
 </vector>
 '''
@@ -94,26 +69,32 @@ def foreground(ink, edge, note, mono=False):
 
 def main():
     os.makedirs(f"{RES}/drawable", exist_ok=True)
-    os.makedirs(f"{RES}/mipmap-anydpi-v26", exist_ok=True)
-    open(f"{RES}/drawable/ic_launcher_monochrome.xml", "w").write(foreground("", "", "Monochrome layer for themed icons.", mono=True))
+    os.makedirs(f"{RES}/mipmap-anydpi", exist_ok=True)
+    white = dict(page="#FFFFFF", fold="#FFFFFF", dot="#FFFFFF", lines="#FFFFFF", lines_a="1")
+    open(f"{RES}/drawable/ic_launcher_monochrome.xml", "w").write(foreground(white, "Monochrome layer for themed icons."))
     for key, badge in PRESETS:
-        ink = ink_for(badge)
-        edge = mix_black(ink, 0.62)
-        open(f"{RES}/drawable/ic_launcher_fg_{key}.xml", "w").write(foreground(ink, edge, f"Logo colour: {key}."))
-        bg = f"@color/launcher_{key}"
-        open(f"{RES}/mipmap-anydpi-v26/ic_launcher_{key}.xml", "w").write(f'''<?xml version="1.0" encoding="utf-8"?>
+        open(f"{RES}/drawable/ic_launcher_fg_{key}.xml", "w").write(foreground(colors(badge), f"Logo colour: {key}."))
+        open(f"{RES}/mipmap-anydpi/ic_launcher_{key}.xml", "w").write(f'''<?xml version="1.0" encoding="utf-8"?>
 <!-- Generated by scripts/make-launcher-icons.py. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="{bg}" />
+    <background android:drawable="@color/launcher_{key}" />
     <foreground android:drawable="@drawable/ic_launcher_fg_{key}" />
     <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
 </adaptive-icon>
 ''')
-    colors = "\n".join(f'    <color name="launcher_{k}">{b or "#00000000"}</color>' for k, b in PRESETS)
+    open(f"{RES}/mipmap-anydpi/ic_launcher.xml", "w").write('''<?xml version="1.0" encoding="utf-8"?>
+<!-- The app's default icon (dark); the launcher shows one of the ic_launcher_<colour> aliases. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/launcher_black" />
+    <foreground android:drawable="@drawable/ic_launcher_fg_black" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+</adaptive-icon>
+''')
+    cols = "\n".join(f'    <color name="launcher_{k}">{b or "#00000000"}</color>' for k, b in PRESETS)
     open(f"{RES}/values/launcher_colors.xml", "w").write(f'''<?xml version="1.0" encoding="utf-8"?>
 <!-- Generated by scripts/make-launcher-icons.py: launcher icon background per logo colour. -->
 <resources>
-{colors}
+{cols}
 </resources>
 ''')
     print("wrote", len(PRESETS), "launcher icons")

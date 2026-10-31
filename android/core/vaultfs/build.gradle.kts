@@ -14,6 +14,9 @@ lint {
     warningsAsErrors = true
     abortOnError = true
     lintConfig = rootProject.file("config/lint.xml")
+    // Print every issue in the build log (CI shows them all, not just the first).
+    textReport = true
+    textOutput = file("stdout")
 }
 dependencies {
     api(project(":core:text"))
