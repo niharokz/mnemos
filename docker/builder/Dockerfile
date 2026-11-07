@@ -43,6 +43,26 @@ RUN rustup target add x86_64-pc-windows-msvc aarch64-linux-android \
  && cargo install --locked cargo-xwin \
  && rm -rf $CARGO_HOME/registry $CARGO_HOME/git
 
+# Tauri's Windows-installer tools, baked in so the release build never has to
+# download them. On Linux the bundler (tauri-cli 2.12, pinned in
+# frontend/package-lock.json) checks <cache>/tauri/NSIS for NSIS.exe and the
+# nsis_tauri_utils plugin by SHA-1 and re-downloads both from GitHub on every
+# build when they are missing. scripts/build-in-container.sh points
+# XDG_CACHE_HOME here. Hashes = the constants in tauri-bundler 2.10.x.
+ARG NSIS_ZIP=https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.13/nsis-3.13.zip
+ARG NSIS_ZIP_SHA1=db14f8af2ea346b786c6ae19343f61aaf5e09b8e
+ARG NSIS_EXE_SHA1=6d45d4e8ccf18fe1fdac9164058f356102a2ecf2
+ARG NSIS_UTILS=https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.5.3/nsis_tauri_utils.dll
+ARG NSIS_UTILS_SHA1=75197fee3c6a814fe035788d1c34ead39349b860
+RUN set -e; T=/opt/tauri-tools/tauri/NSIS; mkdir -p $T/Plugins/x86-unicode/additional \
+ && curl -fsSL --retry 5 -o /tmp/nsis.zip "$NSIS_ZIP" \
+ && echo "$NSIS_ZIP_SHA1  /tmp/nsis.zip" | sha1sum -c - \
+ && unzip -q -j /tmp/nsis.zip nsis-3.13/NSIS.exe -d $T \
+ && echo "$NSIS_EXE_SHA1  $T/NSIS.exe" | sha1sum -c - \
+ && curl -fsSL --retry 5 -o $T/Plugins/x86-unicode/additional/nsis_tauri_utils.dll "$NSIS_UTILS" \
+ && echo "$NSIS_UTILS_SHA1  $T/Plugins/x86-unicode/additional/nsis_tauri_utils.dll" | sha1sum -c - \
+ && rm /tmp/nsis.zip && chmod -R a+rwX /opt/tauri-tools
+
 # Tauri's installer script includes Win\RestartManager.nsh, which first ships
 # with NSIS 3.09; Debian 12 has 3.08. This is NSIS's own file (zlib licence),
 # taken unchanged from NSIS 3.09. Last layer, so the heavy ones stay cached.

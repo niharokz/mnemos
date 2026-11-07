@@ -25,5 +25,5 @@ services:
   # Built straight from each app's repository, so no checkout is needed.
   mnemostxt-builder:
     profiles: [build]
-    image: mnemostxt-builder:2                    # = BUILDER_TAG in mnemostxt's scripts/build-release.sh
+    image: mnemostxt-builder:3                    # = BUILDER_TAG in mnemostxt's scripts/build-release.sh
     build: https://gitlab.com/niharokz/mnemostxt.git#main:docker/builder

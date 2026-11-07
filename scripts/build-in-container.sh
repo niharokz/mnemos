@@ -11,6 +11,8 @@ C=${BUILD_CACHE:-/cache}
 KEY_DIR=${KEY_DIR:-/keys}
 export HOME=$C/home CARGO_HOME=$C/cargo CARGO_TARGET_DIR=$C/target GRADLE_USER_HOME=$C/gradle \
        npm_config_cache=$C/npm XWIN_CACHE_DIR=$C/xwin
+# Tauri's NSIS tools are baked into the image (docker/builder/Dockerfile)
+[ -d /opt/tauri-tools ] && export XDG_CACHE_HOME=/opt/tauri-tools
 mkdir -p "$HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR" "$GRADLE_USER_HOME" "$npm_config_cache" "$XWIN_CACHE_DIR"
 # the toolchain (rustc, cargo-xwin) stays in the image; the cache holds registries
 [ -d /usr/local/rustup ] && export PATH=/usr/local/cargo/bin:$PATH RUSTUP_HOME=/usr/local/rustup
