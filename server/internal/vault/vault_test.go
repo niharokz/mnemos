@@ -109,7 +109,7 @@ func TestCreateRenameTrashPurge(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, n := range []string{"b.md", "b (1).md"} {
-		if _, err := os.Stat(filepath.Join(v.Root, TrashDir, n)); err != nil {
+		if _, err := os.Stat(filepath.Join(v.Root, filepath.FromSlash(TrashDir), n)); err != nil {
 			t.Fatalf("%s not in trash", n)
 		}
 	}

@@ -1,6 +1,6 @@
 //! File commands: list, read, write (atomic, with a conflict check), stat,
 //! create, rename, and the trash. Desktop builds may touch any file the user
-//! picks; the notes folder gets its own trash (.trash/), other files go to the
+//! picks; the notes folder gets its own trash (logs/mnemostxt/trash/), other files go to the
 //! system trash.
 
 use crate::util::{err, input, io_err, is_inside, mtime_ms, show, Res};
@@ -13,7 +13,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Files larger than this are refused (the editor would not cope anyway).
 pub const MAX_READ: u64 = 50 * 1024 * 1024;
-pub const TRASH_DIR: &str = ".trash";
+/// The app's own folder inside the notes folder (settings.json lives here too).
+pub const APP_DIR: [&str; 2] = ["logs", "mnemostxt"];
 pub const LEDGER: &str = ".mnemostxt-trash.tsv";
 
 #[derive(Serialize, Debug)]
@@ -146,7 +147,12 @@ fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
-/// Moves `path` into <notes>/.trash/ and records it in the ledger
+/// <notes>/logs/mnemostxt/trash, built from components so it is right on Windows too.
+pub fn trash_dir(notes: &Path) -> PathBuf {
+    notes.join(APP_DIR[0]).join(APP_DIR[1]).join("trash")
+}
+
+/// Moves `path` into <notes>/logs/mnemostxt/trash/ and records it in the ledger
 /// (trash name, original path relative to the notes folder, unix time).
 pub fn trash_into_notes(path: &Path, notes: &Path) -> Res<()> {
     let notes = dunce::canonicalize(notes).map_err(|e| io_err(e, notes))?;
@@ -155,7 +161,7 @@ pub fn trash_into_notes(path: &Path, notes: &Path) -> Res<()> {
     let fname = path.file_name().ok_or_else(|| err("INVALID", "no file name"))?;
     let src = dunce::canonicalize(parent).map_err(|e| io_err(e, parent))?.join(fname);
     fs::symlink_metadata(&src).map_err(|e| io_err(e, path))?;
-    let trash = notes.join(TRASH_DIR);
+    let trash = trash_dir(&notes);
     if src == notes || src.starts_with(&trash) {
         return Err(err("INVALID", "cannot trash the notes folder or the trash itself"));
     }
@@ -209,7 +215,7 @@ fn size_of(p: &Path) -> u64 {
 /// Permanently deletes trash items older than `days` (ledger time, else mtime).
 /// The only place mnemostxt deletes anything.
 pub fn purge(notes: &Path, days: u64) -> Res<PurgeOut> {
-    let trash = notes.join(TRASH_DIR);
+    let trash = trash_dir(notes);
     let ledger_path = trash.join(LEDGER);
     let ledger = fs::read_to_string(&ledger_path).unwrap_or_default();
     let mut when = std::collections::HashMap::new();
@@ -306,15 +312,18 @@ mod tests {
         trash(&b, Some(&notes)).unwrap();
         fs::write(notes.join("b.md"), "again").unwrap();
         trash(&notes.join("b.md"), Some(&notes)).unwrap();
-        assert!(notes.join(".trash/b.md").exists());
-        assert!(notes.join(".trash/b (1).md").exists());
-        let ledger = fs::read_to_string(notes.join(".trash").join(LEDGER)).unwrap();
+        assert!(trash_dir(&notes).join("b.md").exists());
+        assert!(trash_dir(&notes).join("b (1).md").exists());
+        let ledger = fs::read_to_string(trash_dir(&notes).join(LEDGER)).unwrap();
         assert_eq!(ledger.lines().count(), 2);
         assert!(ledger.contains("\tb.md\t"));
         assert_eq!(purge(&notes, 30).unwrap().removed, 0); // too new
         assert_eq!(purge(&notes, 0).unwrap().removed, 2);
-        assert!(fs::read_to_string(notes.join(".trash").join(LEDGER)).unwrap().is_empty());
+        assert!(fs::read_to_string(trash_dir(&notes).join(LEDGER)).unwrap().is_empty());
         assert!(trash(&notes, Some(&notes)).is_err());
+        // nothing at the top of the notes folder but the user's own files
+        let top: Vec<_> = fs::read_dir(&notes).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(top.len(), 3, "{top:?}"); // sub, c.md, logs
     }
 
     #[test]

@@ -8,7 +8,7 @@ import { trimTrailingChanges } from '../editor/lineops.js';
 import { decode, encode, looksBinary, ansiLossy } from '../core/encoding.js';
 import { detect, byNameOf, PLAIN, isMarkdown } from '../core/languages.js';
 import { basename, dirname, extname, join, isInside, pretty, relative, validName } from '../core/paths.js';
-import { SETTINGS_DIR, SETTINGS_FILE } from '../core/settings.js';
+import { TRASH_DIR } from '../core/settings.js';
 import { confirm, prompt, sheet, toast, alert } from './dialogs.js';
 import { debounce, h } from './dom.js';
 
@@ -530,7 +530,7 @@ export class App {
   }
 
   async trashPath(path) {
-    const where = this.inNotes(path) ? `${this.backend.notesName}/.trash` : 'the system trash';
+    const where = this.inNotes(path) ? `${this.backend.notesName}/${TRASH_DIR}` : 'the system trash';
     if (this.settings.get('confirmDelete') && !(await confirm('Move to trash?', `${basename(path)} goes to ${where}. You can restore it from there.`, { ok: 'Move to trash', danger: true }))) return;
     try {
       await this.backend.trash(path);
@@ -542,7 +542,7 @@ export class App {
 
   async emptyTrash() {
     const days = this.settings.get('trashDays');
-    if (!(await confirm('Empty trash?', `Permanently delete items that have been in ${this.backend.notesName}/.trash for more than ${days} days?`, { ok: 'Delete', danger: true }))) return;
+    if (!(await confirm('Empty trash?', `Permanently delete items that have been in ${this.backend.notesName}/${TRASH_DIR} for more than ${days} days?`, { ok: 'Delete', danger: true }))) return;
     try {
       const r = await this.backend.trashPurge(days);
       toast(`Removed ${r.removed} item${r.removed === 1 ? '' : 's'} from trash`);
@@ -690,7 +690,7 @@ export class App {
       : null;
     const body = h('div', {},
       h('p', {}, first
-        ? 'mnemostxt keeps one folder always in the sidebar — your notes. Its settings live there too, in .mnemostxt/settings.json, so every device shares them.'
+        ? 'mnemostxt keeps one folder always in the sidebar — your notes. Its settings live there too, in logs/mnemostxt/settings.json, so every device shares them.'
         : 'The notes folder is always in the sidebar and holds the shared settings file.'),
       h('label.f', {}, h('span', {}, 'Notes folder'), h('div.row', {}, input, browse)),
       be.kind === 'android' ? h('p.muted', {}, 'Android: allow "All files access" for mnemostxt when asked, so it can read a folder like /storage/emulated/0/notes.') : null);

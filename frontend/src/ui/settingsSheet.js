@@ -53,7 +53,7 @@ export function showSettings(app) {
     sw('markdownPreviewOnOpen', 'Open markdown preview with .md files'),
     sw('confirmDelete', 'Confirm before moving to trash'),
     row('Keep trash for (days)', num('trashDays', 1, 3650), 'Settings → Empty trash removes older items'),
-    h('p.muted.set-foot', {}, `Saved in ${app.backend.notesName}/.mnemostxt/settings.json · mnemostxt ${app.backend.version}`),
+    h('p.muted.set-foot', {}, `Saved in ${app.backend.notesName}/logs/mnemostxt/settings.json · mnemostxt ${app.backend.version}`),
   );
 
   return sheet({

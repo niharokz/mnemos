@@ -20,7 +20,7 @@ One editor UI, three ways to reach files.
 | Path | What it does |
 |---|---|
 | `main.js` | start-up: backend → sign-in (web) → notes folder (first run) → settings → session → UI |
-| `core/settings.js` | the one settings file, `<notes>/.mnemostxt/settings.json`; values are sanitised, unknown keys kept |
+| `core/settings.js` | the one settings file, `<notes>/logs/mnemostxt/settings.json`; values are sanitised, unknown keys kept |
 | `core/encoding.js` | bytes ↔ text: UTF-8 (BOM), UTF-16 LE/BE, ANSI (Windows-1252); line-ending detection |
 | `core/languages.js` | language detection (file name, shebang) and the A–Z Language menu |
 | `core/keys.js` | keyboard events → "Ctrl+Shift+S" strings |
@@ -104,8 +104,8 @@ bans. The built frontend is embedded (`web/dist`).
 
 ## Trash
 
-Deleting moves an item to `<notes>/.trash/` and appends a line to
-`.trash/.mnemostxt-trash.tsv` (`name⇥original path⇥unix time`). Settings →
+Deleting moves an item to `<notes>/logs/mnemostxt/trash/` and appends a line to
+`trash/.mnemostxt-trash.tsv` (`name⇥original path⇥unix time`). Settings →
 Empty trash deletes items older than `trashDays`. Files outside the notes
 folder (desktop) go to the system trash.
 

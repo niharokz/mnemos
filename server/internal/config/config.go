@@ -1,6 +1,6 @@
 // Package config reads the server settings from MNEMOSTXT_* environment
 // variables (in the homelab: the shared .env, passed through docker-compose).
-// Editor settings are not here: they live in <notes>/.mnemostxt/settings.json.
+// Editor settings are not here: they live in <notes>/logs/mnemostxt/settings.json.
 package config
 
 import (

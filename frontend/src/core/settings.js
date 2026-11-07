@@ -1,10 +1,12 @@
 // The one settings file, shared by every mnemostxt (desktop, Android, web):
-//   <notes folder>/.mnemostxt/settings.json
+//   <notes folder>/logs/mnemostxt/settings.json
+// (the app keeps nothing else at the top of the notes folder)
 // It travels with the notes (Syncthing), so all devices look and behave alike.
 // Unknown keys are kept, so a newer version never loses an older one's values.
 import { join } from './paths.js';
 
-export const SETTINGS_DIR = '.mnemostxt';
+export const SETTINGS_DIR = 'logs/mnemostxt';
+export const TRASH_DIR = 'logs/mnemostxt/trash';
 export const SETTINGS_FILE = 'settings.json';
 
 export const DEFAULTS = Object.freeze({
@@ -26,7 +28,7 @@ export const DEFAULTS = Object.freeze({
   trimTrailingWhitespaceOnSave: false,
   insertFinalNewlineOnSave: false,
   showHidden: false,
-  hidden: ['.git', '.trash', '.mnemostxt', '.obsidian', '.stfolder', '.stversions', 'node_modules'],
+  hidden: ['.git', '.trash', '.obsidian', '.stfolder', '.stversions', 'node_modules'],
   trashDays: 30,
   markdownPreviewOnOpen: false,
   confirmDelete: true,

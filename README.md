@@ -34,7 +34,7 @@
 - **Never loses work.** Unsaved edits survive closing (or crashing); a file
   changed by another program or device is never overwritten silently;
   Syncthing conflict copies are flagged.
-- **One setting.** Settings live in `<notes>/.mnemostxt/settings.json`, so the
+- **One setting.** Settings live in `<notes>/logs/mnemostxt/settings.json`, so the
   desktop, phone and web app look and behave the same.
 - **nss look**, dark or light. The menu bar collapses into one button (Alt opens it).
 

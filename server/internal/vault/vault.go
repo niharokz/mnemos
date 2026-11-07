@@ -2,7 +2,7 @@
 // relative to the root and is checked twice: lexically (no "..", no absolute
 // paths) and after resolving symlinks (it must still be inside the root).
 // Behaviour matches the desktop app (app/src/files.rs): atomic writes with a
-// modification-time check, and a .trash folder with the same ledger.
+// modification-time check, and the same trash (logs/mnemostxt/trash) and ledger.
 package vault
 
 import (
@@ -25,7 +25,8 @@ import (
 )
 
 const (
-	TrashDir = ".trash"
+	AppDir   = "logs/mnemostxt" // the app's folder inside the notes folder (settings.json too)
+	TrashDir = AppDir + "/trash"
 	Ledger   = ".mnemostxt-trash.tsv"
 )
 
@@ -293,7 +294,7 @@ func (v *Vault) Rename(from, to string) error {
 	return ioErr(os.Rename(pf, pt), cf)
 }
 
-// Trash moves an item into .trash/ and records it in the ledger.
+// Trash moves an item into logs/mnemostxt/trash/ and records it in the ledger.
 func (v *Vault) Trash(rel string) error {
 	p, c, err := v.Abs(rel)
 	if err != nil {
@@ -305,7 +306,7 @@ func (v *Vault) Trash(rel string) error {
 	if _, err := os.Lstat(p); err != nil {
 		return ioErr(err, c)
 	}
-	trash := filepath.Join(v.Root, TrashDir)
+	trash := filepath.Join(v.Root, filepath.FromSlash(TrashDir))
 	if err := os.MkdirAll(trash, 0o755); err != nil {
 		return ioErr(err, TrashDir)
 	}
@@ -341,7 +342,7 @@ type PurgeResult struct {
 // Purge deletes trash items older than days (ledger time, else mtime).
 // The only place the web app deletes anything.
 func (v *Vault) Purge(days int, now time.Time) (PurgeResult, error) {
-	trash := filepath.Join(v.Root, TrashDir)
+	trash := filepath.Join(v.Root, filepath.FromSlash(TrashDir))
 	ledgerPath := filepath.Join(trash, Ledger)
 	when := map[string]int64{}
 	var lines []string
@@ -438,6 +439,9 @@ func (v *Vault) Search(query string, isRegex, caseSensitive bool, max int) ([]Hi
 	walkErr := filepath.WalkDir(v.Root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
+		}
+		if d.IsDir() && p == filepath.Join(v.Root, filepath.FromSlash(AppDir)) {
+			return filepath.SkipDir // settings and trash are not searched
 		}
 		if p != v.Root && v.Hidden[d.Name()] {
 			if d.IsDir() {

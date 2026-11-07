@@ -8,7 +8,7 @@ use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const MAX_FILE: u64 = 4 * 1024 * 1024;
 const MAX_TEXT: usize = 300;
@@ -38,6 +38,10 @@ pub fn search(roots: &[PathBuf], query: &str, regex: bool, case_sensitive: bool,
     while let Some(dir) = stack.pop() {
         if out.len() >= max {
             break;
+        }
+        // the app's own folder (settings, trash) is not searched
+        if dir.ends_with(Path::new(crate::files::APP_DIR[0]).join(crate::files::APP_DIR[1])) {
+            continue;
         }
         let Ok(canon) = dunce::canonicalize(&dir) else { continue };
         if !seen.insert(canon) {
