@@ -17,27 +17,27 @@ for f in .env .private-words; do
   fi
 done
 
-pattern='^MNEMOS_(PASSWORD|SECRET|STORE_PASSWORD|KEY_PASSWORD)=.{8,}'
+pattern='^MNEMOSTXT_(PASSWORD|SECRET|STORE_PASSWORD|KEY_PASSWORD)=.{8,}'
 if git grep -nI -E "$pattern" -- . ':!.env.example' >/dev/null 2>&1; then
   echo "✗ something that looks like a real password or secret is committed:"
   git grep -nI -E "$pattern" -- . ':!.env.example'; fail=1
 fi
-# the Android signing key and its passwords live in $KEYS_HOME/.mnemos-keys, never in the repo
-if git ls-files | grep -E '\.(jks|keystore|p12)$|(^|/)keystore\.env$' >/dev/null; then
-  echo "✗ a signing key or keystore.env is tracked:"
-  git ls-files | grep -E '\.(jks|keystore|p12)$|(^|/)keystore\.env$' | sed 's/^/    /'; fail=1
+# the Android signing key and its passwords live in $KEYS_HOME/.mnemostxt-keys, never in the repo
+if git ls-files | grep -E '\.(jks|keystore|p12|pfx)$|(^|/)keystore\.(env|properties)$' >/dev/null; then
+  echo "✗ a signing key or keystore file is tracked:"
+  git ls-files | grep -E '\.(jks|keystore|p12|pfx)$|(^|/)keystore\.(env|properties)$' | sed 's/^/    /'; fail=1
 fi
-if git grep -nI -E '\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}' -- . ':!vendor' >/dev/null 2>&1; then
+if git grep -nI -E '\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}' -- . ':!server/vendor' >/dev/null 2>&1; then
   echo "✗ a bcrypt hash is committed:"
-  git grep -nI -l -E '\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}' -- . ':!vendor' | sed 's/^/    /'; fail=1
+  git grep -nI -l -E '\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}' -- . ':!server/vendor' | sed 's/^/    /'; fail=1
 fi
 
 if [ -f .private-words ]; then
   while IFS= read -r word; do
     case "$word" in ''|'#'*) continue ;; esac
-    if git grep -nIiF -e "$word" -- . ':!vendor' ':!web/static/vendor' >/dev/null 2>&1; then
+    if git grep -nIiF -e "$word" -- . ':!server/vendor' ':!frontend/package-lock.json' ':!app/Cargo.lock' >/dev/null 2>&1; then
       echo "✗ private word \"$word\" found in:"
-      git grep -nIiF -l -e "$word" -- . ':!vendor' ':!web/static/vendor' | sed 's/^/    /'; fail=1
+      git grep -nIiF -l -e "$word" -- . ':!server/vendor' ':!frontend/package-lock.json' ':!app/Cargo.lock' | sed 's/^/    /'; fail=1
     fi
   done < .private-words
 fi

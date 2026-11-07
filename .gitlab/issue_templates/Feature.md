@@ -1,9 +1,7 @@
-## What you want to do
+## The idea
 
-## Why the current app does not do it
+## Why it helps
 
-## Web, Android, or both
-
-## Ideas (optional)
+mnemostxt is "just a notepad" — say why this belongs in one.
 
 /label ~feature

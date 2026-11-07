@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#070b0f">
+<title>mnemostxt</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#070b0f;--surface:#0f161b;--line:#1f2c33;--fg:#e6ecec;--muted:#8b979a;--accent:#3a807a;--ink:#66bdb3;--lilac:#a9b8ff;--mono:ui-monospace,"JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--fg);font:16px/1.65 var(--sans);background:radial-gradient(45rem 28rem at 105% -10%,rgba(58,128,122,.22),transparent 70%),linear-gradient(rgba(58,128,122,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(58,128,122,.09) 1px,transparent 1px) var(--bg);background-size:auto,40px 40px,40px 40px}
+.wrap{max-width:46rem;margin:0 auto;padding:0 1.4rem}
+header{display:flex;align-items:center;gap:.6rem;padding:1.2rem 0}
+.brand{font:700 1.05rem var(--mono)}.brand::before{content:"~/";color:var(--muted);font-weight:500}.brand::after{content:"_";color:var(--accent);animation:b 1.2s steps(1) infinite}
+@keyframes b{50%{opacity:0}}
+header .sp{flex:1}
+a.btn{display:inline-flex;align-items:center;gap:.5rem;padding:.55rem 1rem;border-radius:10px;border:1px solid var(--line);background:#152027;color:var(--fg);text-decoration:none;font-size:.95rem}
+a.btn:hover{border-color:var(--accent)}
+a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+h1{font:700 clamp(2rem,6vw,3rem)/1.1 var(--sans);letter-spacing:-.03em;margin:3.5rem 0 .8rem}
+h1 em{font-style:normal;color:var(--ink)}
+.lead{color:var(--muted);font-size:1.1rem;max-width:36rem}
+.actions{display:flex;flex-wrap:wrap;gap:.6rem;margin:1.8rem 0 3rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));gap:.8rem}
+.card{padding:1rem 1.1rem;border:1px solid var(--line);border-radius:12px;background:rgba(15,22,27,.85)}
+.card b{display:block;font-family:var(--mono);font-size:.82rem;color:var(--lilac);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.2rem}
+.card span{color:var(--muted);font-size:.93rem}
+footer{color:var(--muted);font:.8rem var(--mono);padding:3rem 0 2rem}
+footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="/icon.svg" width="28" height="28" alt="">
+    <span class="brand">mnemostxt</span>
+    <span class="sp"></span>
+    <a class="btn" href="/app/">{{if .Signed}}Open{{else}}Sign in{{end}}</a>
+  </header>
+  <main>
+    <h1>Just a <em>notepad</em>.</h1>
+    <p class="lead">Tabs, a folder sidebar, Notepad++ keys and syntax highlighting for 140+ languages — on Linux, Windows, Android and here on the web. Your notes stay plain files.</p>
+    <div class="actions">
+      <a class="btn primary" href="/app/">{{if .Signed}}Open your notes{{else}}Sign in{{end}}</a>
+      <a class="btn" href="{{.EXE}}">Windows</a>
+      <a class="btn" href="{{.DEB}}">Linux (.deb)</a>
+      <a class="btn" href="{{.APK}}">Android</a>
+    </div>
+    <div class="cards">
+      <div class="card"><b>Plain files</b><span>Edits your notes folder directly. Sync it with Syncthing; nothing is locked in.</span></div>
+      <div class="card"><b>One setting</b><span>Settings live in the notes folder, so every device looks and behaves the same.</span></div>
+      <div class="card"><b>Never loses work</b><span>Unsaved edits survive closing the app; changes on disk are caught before saving over them.</span></div>
+    </div>
+  </main>
+  <footer>mnemostxt {{.Version}} · <a href="{{.Source}}">source</a></footer>
+</div>
+</body>
+</html>

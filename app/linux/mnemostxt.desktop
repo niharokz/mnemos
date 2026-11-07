@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name={{name}}
+GenericName=Text Editor
+Comment={{comment}}
+Exec={{exec}} %F
+Icon={{icon}}
+Terminal=false
+StartupWMClass=mnemostxt
+Categories=Utility;TextEditor;Development;
+Keywords=notepad;text;editor;markdown;notes;
+{{#if mime_type}}MimeType={{mime_type}}{{/if}}
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New file
+Exec={{exec}}

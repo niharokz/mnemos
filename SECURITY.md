@@ -1,43 +1,39 @@
 # Security
 
-## Reporting a problem
+## Reporting
 
-Please report security issues privately, not in a public issue:
-open a **confidential issue** at <https://gitlab.com/niharokz/mnemos/-/issues/new>
-(tick "This issue is confidential"). Include what you found, how to reproduce it,
-and the version (`mnemos version`, also shown at the bottom of the about page; for the
-Android app, Settings → About).
+Please report security problems privately to the maintainer (GitLab profile
+email), not in a public issue.
 
-You should get a reply within a week. Fixes are released as a new version and
-noted in `CHANGELOG.md` (web) or `android/CHANGELOG.md` (Android).
+## How mnemostxt is built to be safe
 
-## Supported versions
+**Desktop and Android apps**
 
-Only the latest release of each app is supported. Update the web app with
-`git pull && docker compose up -d --build`; the Android app from GitLab Releases.
+- Work offline. The only network use is opening a link you click.
+- Files are reached through the app's own commands (app/src), not a general
+  file-system plugin; the window may only call those commands, the file
+  dialogs and "open URL" (app/capabilities/default.json).
+- Strict Content Security Policy: no remote scripts, no inline scripts.
+- Saves are atomic and refuse to overwrite a file that changed on disk.
+- Unsaved edits are backed up in the app's own data folder, not next to your
+  files.
 
-## What Mnemos protects, and how
+**Web app (server/)**
 
-See "Security notes" in `README.md` and "Security model" in `ARCHITECTURE.md`.
-In short: bcrypt passwords, signed `__Host-` session cookies bound to each account's
-password, a demo user that is read-only on the server and never sees your vault,
-per-IP login lockout and multi-day bans for repeated failed sign-ins or scans for `.env`/`.git`/`*.php`, same-origin JSON writes with a custom header, paths confined to
-the notes folder, strict CSP and security headers, and a non-root, read-only,
-capability-free container that can only write to your notes.
+- One user, password as plain text or bcrypt hash, compared in constant time.
+- Session cookie signed with HMAC-SHA256 from `MNEMOSTXT_SECRET` and the
+  password (changing either signs out everywhere); `__Host-` cookie over HTTPS,
+  HttpOnly, SameSite=Lax.
+- Every change needs the `X-Mnemostxt` header and same-origin, which blocks
+  cross-site forgery.
+- Failed sign-ins: 5 within 15 minutes locks the address; public addresses are
+  then banned for `MNEMOSTXT_BAN_HOURS` (bans survive restarts).
+- Paths are checked lexically and again after resolving symlinks: nothing
+  outside the notes folder can be read or written.
+- Runs as your user in a read-only, capability-free container from `scratch`.
 
-The Android app talks only to the Mnemos server you sign in to (https only, session
-cookie kept in app-private storage, never the password). With a phone folder it makes no
-network requests; see `android/README.md`.
+**Release keys**
 
-## Your part
-
-- Use a long passphrase and store it as a bcrypt hash in `MNEMOS_PASSWORD`.
-- Set `MNEMOS_SECRET` to 32+ random characters (`openssl rand -hex 32`).
-- Keep `.env` out of git (`.gitignore` does this). A shared `.env` is fine:
-  `docker-compose.yml` passes only `TZ` and the `MNEMOS_*` variables into the container.
-- Serve Mnemos only over HTTPS, behind a proxy you control, and do not publish
-  its port: the login lockout trusts the client-IP headers your proxy sets.
-- The demo login is public on purpose. If you do not want a demo, set `MNEMOS_DEMO=false`.
-- Keep the Android signing key (`$KEYS_HOME/.mnemos-keys`, mode 700) out of the repo and backed up;
-  `scripts/check-public.sh` refuses a push that tracks a keystore. Only your own release runner
-  (tag `mnemos-apk`) can read it; GitLab never stores it.
+The Android signing key stays on the build machine (outside the repository);
+`scripts/check-public.sh` blocks commits of keys, passwords, hashes and any
+words listed in your own `.private-words`.

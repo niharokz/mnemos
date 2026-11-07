@@ -1,0 +1,142 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "mnemostxt",
+  "mainBinaryName": "mnemostxt",
+  "version": "0.0.1",
+  "identifier": "ar.nih.mnemostxt",
+  "build": {
+    "frontendDist": "../frontend/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": {
+      "script": "npm run dev",
+      "cwd": "../frontend"
+    },
+    "beforeBuildCommand": {
+      "script": "npm run build",
+      "cwd": "../frontend"
+    }
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "mnemostxt",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 360,
+        "minHeight": 320,
+        "center": true,
+        "dragDropEnabled": true,
+        "backgroundColor": "#070b0f",
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self' ipc: http://ipc.localhost",
+        "script-src": "'self' 'wasm-unsafe-eval'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' blob: data:",
+        "font-src": "'self' data:",
+        "worker-src": "'self' blob:",
+        "connect-src": "ipc: http://ipc.localhost"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "deb",
+      "nsis"
+    ],
+    "publisher": "Nihar",
+    "copyright": "\u00a9 Nihar \u2014 MIT licence",
+    "category": "DeveloperTool",
+    "shortDescription": "Just a notepad",
+    "longDescription": "mnemostxt is a plain notepad with tabs, a folder sidebar, Notepad++ key bindings and syntax highlighting for 140+ languages. Your notes folder is always in the sidebar; settings live in it and are shared by every device.",
+    "homepage": "https://gitlab.com/niharokz/mnemostxt",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "txt",
+          "text",
+          "log"
+        ],
+        "name": "Text file",
+        "mimeType": "text/plain",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "md",
+          "markdown",
+          "mkd"
+        ],
+        "name": "Markdown",
+        "mimeType": "text/markdown",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "ini",
+          "cfg",
+          "conf",
+          "env"
+        ],
+        "name": "Config file",
+        "mimeType": "text/x-ini",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "csv",
+          "tsv"
+        ],
+        "name": "Table",
+        "mimeType": "text/csv",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "yml",
+          "yaml",
+          "toml"
+        ],
+        "name": "YAML or TOML",
+        "mimeType": "application/x-yaml",
+        "role": "Editor"
+      }
+    ],
+    "linux": {
+      "deb": {
+        "section": "editors",
+        "priority": "optional",
+        "depends": [],
+        "desktopTemplate": "linux/mnemostxt.desktop"
+      }
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "windows/hooks.nsh"
+      }
+    },
+    "android": {
+      "minSdkVersion": 26
+    }
+  },
+  "plugins": {}
+}

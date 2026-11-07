@@ -1,60 +1,43 @@
-# Mnemos — your notes folder on the web: markdown, CSV tables, search, conflicts.
-# Every personal value (paths, user id, network, login) comes from .env.
+# mnemostxt web — your notes folder in the browser (the desktop and Android
+# apps do not need this). Every personal value comes from .env.
 services:
-  mnemos:
+  mnemostxt:
     build: .
-    image: mnemos:local
-    container_name: mnemos
+    image: mnemostxt:local
+    container_name: mnemostxt
     restart: unless-stopped
     init: true
-    user: "${PUID:-1000}:${PGID:-1000}"      # write notes as your user, not root
+    user: "${PUID:-1000}:${PGID:-1000}"          # writes notes as your user, not root
     # Only these variables reach the container, so a shared .env is safe.
     environment:
       TZ: ${TZ:-UTC}
-      MNEMOS_USER: ${MNEMOS_USER:?set MNEMOS_USER in .env}
-      MNEMOS_PASSWORD: ${MNEMOS_PASSWORD:?set MNEMOS_PASSWORD in .env}
-      MNEMOS_SECRET: ${MNEMOS_SECRET:-}
-      MNEMOS_HIDDEN: ${MNEMOS_HIDDEN:-}
-      MNEMOS_TRASH: ${MNEMOS_TRASH:-.trash}
-      MNEMOS_AUTOSAVE_MS: ${MNEMOS_AUTOSAVE_MS:-1000}
-      MNEMOS_MAX_FILE_MB: ${MNEMOS_MAX_FILE_MB:-5}
-      MNEMOS_MAX_UPLOAD_MB: ${MNEMOS_MAX_UPLOAD_MB:-20}
-      MNEMOS_CAPTURE: ${MNEMOS_CAPTURE:-inbox/note.md}
-      MNEMOS_TEMPLATES: ${MNEMOS_TEMPLATES:-templates}
-      MNEMOS_DEMO: ${MNEMOS_DEMO:-true}
-      MNEMOS_DEMO_USER: ${MNEMOS_DEMO_USER:-demouser}
-      MNEMOS_DEMO_PASSWORD: ${MNEMOS_DEMO_PASSWORD:-demo}
-      MNEMOS_APK_URL: ${MNEMOS_APK_URL:-}
-      # Ban an address for days after repeated failed sign-ins or scans for .env/.git/*.php
-      MNEMOS_BAN_AFTER: ${MNEMOS_BAN_AFTER:-5}
-      MNEMOS_BAN_DAYS: ${MNEMOS_BAN_DAYS:-7}
-      MNEMOS_BAN_PRIVATE: ${MNEMOS_BAN_PRIVATE:-false}
-      MNEMOS_STATE: /state
+      MNEMOSTXT_USER: ${MNEMOSTXT_USER:?set MNEMOSTXT_USER in .env}
+      MNEMOSTXT_PASSWORD: ${MNEMOSTXT_PASSWORD:?set MNEMOSTXT_PASSWORD in .env}
+      MNEMOSTXT_SECRET: ${MNEMOSTXT_SECRET:-}
+      MNEMOSTXT_NOTES_NAME: ${MNEMOSTXT_NOTES_NAME:-notes}
+      MNEMOSTXT_MAX_FILE_MB: ${MNEMOSTXT_MAX_FILE_MB:-20}
+      MNEMOSTXT_HIDDEN: ${MNEMOSTXT_HIDDEN:-}
+      MNEMOSTXT_BAN_AFTER: ${MNEMOSTXT_BAN_AFTER:-5}
+      MNEMOSTXT_BAN_HOURS: ${MNEMOSTXT_BAN_HOURS:-24}
+      MNEMOSTXT_BAN_PRIVATE: ${MNEMOSTXT_BAN_PRIVATE:-false}
     volumes:
       - ${NOTE_PATH:?set NOTE_PATH in .env}:/notes
-      - mnemos-state:/state     # bans list (survives restarts and rebuilds)
+      - mnemostxt-state:/state                    # remembered bans
     read_only: true
-    tmpfs:
-      - /tmp:size=32m,mode=1777   # the demo user's sample vault is unpacked here at start (any user may write)
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - proxy
-    # No published port: your reverse proxy reaches mnemos:8080 on the shared network.
-    # For a quick local test instead, add:  ports: ["127.0.0.1:8080:8080"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [proxy]
+    # No published port: the reverse proxy reaches mnemostxt:8080 on the shared network.
+    # For a quick local test add:  ports: ["127.0.0.1:8080:8080"]
     stop_grace_period: 20s
     logging:
       driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+      options: { max-size: "10m", max-file: "3" }
 
 volumes:
-  mnemos-state:
+  mnemostxt-state:
 
 networks:
   proxy:
-    name: ${MNEMOS_NETWORK:-homelab}
+    name: ${MNEMOSTXT_NETWORK:-homelab}
     external: true

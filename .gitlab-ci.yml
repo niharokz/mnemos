@@ -1,118 +1,156 @@
-# Mnemos CI on GitLab (free tier).
+# mnemostxt CI/CD
 #
-#   every push / merge request  check    Go (gofmt, vet, test), front end, versions, no secrets,
-#                                        Docker image build — on GitLab shared runners
-#   tag vX.Y.Z (= VERSION)      apk      signed APK built by your own runner (tag: mnemos-apk),
-#                                        uploaded to the project's package registry
-#                               image    web image pushed to the container registry (:X.Y.Z, :latest)
-#                               release  a GitLab release with the CHANGELOG section and the APK
+#   every push and merge request (GitLab shared runners)
+#     check    frontend tests + build, Go vet/test, Rust fmt/test, versions, no secrets, web image
+#   a version tag vX.Y.Z (your own build runner, tag "mnemostxt-build")
+#     build    mnemostxt-X.Y.Z-amd64.deb, mnemostxt-X.Y.Z-setup.exe, mnemostxt-X.Y.Z.apk
+#     release  files into the package registry + a GitLab release with permanent links:
+#              …/-/releases/permalink/latest/downloads/mnemostxt.apk  (and .deb, -setup.exe)
 #
-# The newest APK is always at
-#   https://gitlab.com/niharokz/mnemos/-/releases/permalink/latest/downloads/mnemos.apk
-# Runner setup and releasing: README → "Releases and the Android APK".
+# Release: write the CHANGELOG section, then  sh scripts/release.sh X.Y.Z
+# Runner setup: docs/RUNNER.md
 
 stages: [check, build, release]
 
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
-      when: never
-    - if: $CI_COMMIT_BRANCH
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH
 
 variables:
   GOFLAGS: -mod=vendor
+  PKG_URL: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/mnemostxt/${CI_COMMIT_TAG}
 
-.release: &release
+.tag-only: &tag-only
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
 
-# ── check ─────────────────────────────────────────────────────────────────────
-go:
+# ── check ──────────────────────────────────────────────────────────────────
+frontend:
+  stage: check
+  image: node:22-alpine
+  needs: []
+  cache:
+    key: { files: [frontend/package-lock.json] }
+    paths: [frontend/.npm]
+  script:
+    - cd frontend
+    - npm ci --cache .npm --no-audit --no-fund
+    - npm test
+    - npm run build
+  artifacts:
+    expire_in: 1 day
+    paths: [frontend/dist]
+
+server:
   stage: check
   image: golang:1.24-alpine
+  needs: []
   script:
-    - unformatted=$(gofmt -l assets.go cmd internal web)
+    - cd server
+    - unformatted=$(gofmt -l cmd internal web)
     - '[ -z "$unformatted" ] || { echo "gofmt needed: $unformatted"; exit 1; }'
     - go vet ./...
     - go test ./...
 
-web:
+app:
   stage: check
-  image: node:22-alpine
+  image: rust:1-bookworm
+  needs: [frontend]
+  rules:
+    - if: $CI_COMMIT_TAG
+    - changes: [app/**/*, frontend/**/*]
+  variables:
+    CARGO_HOME: $CI_PROJECT_DIR/.cargo
+  cache:
+    key: { files: [app/Cargo.lock] }
+    paths: [.cargo/registry, app/target]
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev >/dev/null
+    - rustup component add rustfmt
   script:
-    - for f in web/static/js/*.js; do node --check "$f"; done
-    - node -e 'JSON.parse(require("fs").readFileSync("web/static/manifest.webmanifest"))'
+    - cd app
+    - cargo fmt --check
+    - cargo test --locked
 
 versions:
   stage: check
   image: alpine:3.20
+  needs: []
   script:
     - sh scripts/check-version.sh "${CI_COMMIT_TAG:-}"
 
 public:
   stage: check
   image: alpine:3.20
+  needs: []
   before_script:
     - apk add --no-cache git
   script:
     - sh scripts/check-public.sh
 
-docker:
+web-image:
   stage: check
   image: docker:27
   services: [docker:27-dind]
+  needs: []
   variables:
     DOCKER_TLS_CERTDIR: /certs
   script:
-    # the web image builds, and its tests pass inside the build
-    - docker build -t mnemos:ci .
-    - |
-      if [ -n "${CI_COMMIT_TAG:-}" ]; then
-        echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
-        for t in "$(cat VERSION)" latest; do docker tag mnemos:ci "$CI_REGISTRY_IMAGE:$t" && docker push "$CI_REGISTRY_IMAGE:$t"; done
-      fi
+    - docker build -t mnemostxt:ci .
 
-# ── build ─────────────────────────────────────────────────────────────────────
-apk:
+# ── build (own runner) ─────────────────────────────────────────────────────
+release-files:
   stage: build
-  tags: [mnemos-apk]                      # your self-hosted shell runner (Docker + signing key); uses no CI minutes
-  needs: [go, versions]
-  <<: *release
+  <<: *tag-only
+  tags: [mnemostxt-build]          # your shell runner (docs/RUNNER.md)
+  needs: [frontend, server, versions, public]
   variables:
-    GIT_CLEAN_FLAGS: -ffdx -e android/dist/   # the Gradle cache is a Docker volume, kept between releases
+    GIT_CLEAN_FLAGS: -ffdx -e app/gen/
   script:
-    - VERSION=$(cat VERSION)
-    - '[ "v$VERSION" = "$CI_COMMIT_TAG" ] || { echo "tag $CI_COMMIT_TAG does not match VERSION $VERSION"; exit 1; }'
-    - ./android/build.sh
-    - cp "android/dist/mnemos-$VERSION.apk" mnemos.apk
-    - 'curl --fail-with-body --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file mnemos.apk
-        "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/mnemos/$CI_COMMIT_TAG/mnemos-$CI_COMMIT_TAG.apk"'
-    # release notes: this version's section of CHANGELOG.md (web) and android/CHANGELOG.md
-    - awk -v v="$VERSION" '/^## /{p = index($0 " ", "## " v " ") == 1; next} p' CHANGELOG.md > release-notes.md
-    - '[ -s release-notes.md ] || { echo "CHANGELOG.md has no section for $VERSION"; exit 1; }'
-    - printf '\n### Android\n' >> release-notes.md
-    - awk -v v="$VERSION" '/^## /{p = index($0 " ", "## " v " ") == 1; next} p' android/CHANGELOG.md >> release-notes.md
+    - sh scripts/check-version.sh "$CI_COMMIT_TAG"
+    - sh scripts/build-release.sh deb exe apk
+    - V=$(cat VERSION)
+    # into the generic package registry (file names carry the tag, e.g. mnemostxt-v0.0.1.apk)
+    - |
+      for pair in "mnemostxt-$V-amd64.deb:mnemostxt-$CI_COMMIT_TAG-amd64.deb" "mnemostxt-$V-setup.exe:mnemostxt-$CI_COMMIT_TAG-setup.exe" "mnemostxt-$V.apk:mnemostxt-$CI_COMMIT_TAG.apk" "SHA256SUMS:SHA256SUMS"; do
+        f=${pair%%:*}; n=${pair#*:}
+        curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "dist/release/$f" "$PKG_URL/$n"
+        echo " uploaded $n"
+      done
+    # release notes: this version's section of CHANGELOG.md
+    - awk -v v="$V" '$0 ~ "^## "v"( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md > release-notes.md
   artifacts:
-    paths: [release-notes.md]
-    expire_in: 1 week
+    expire_in: 30 days
+    paths: [dist/release/, release-notes.md]
 
-# ── release ───────────────────────────────────────────────────────────────────
+# ── release ────────────────────────────────────────────────────────────────
 release:
   stage: release
-  image: registry.gitlab.com/gitlab-org/cli:latest    # glab, used by the release: keyword
-  needs: [apk, docker]
-  <<: *release
+  <<: *tag-only
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs: [release-files]
   script:
-    - echo "Release $CI_COMMIT_TAG"
+    - echo "Releasing $CI_COMMIT_TAG"
   release:
     tag_name: $CI_COMMIT_TAG
-    name: Mnemos $CI_COMMIT_TAG
+    name: mnemostxt $CI_COMMIT_TAG
     description: release-notes.md
     assets:
       links:
-        - name: mnemos-$CI_COMMIT_TAG.apk
-          url: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/mnemos/$CI_COMMIT_TAG/mnemos-$CI_COMMIT_TAG.apk
+        - name: Android (mnemostxt.apk)
+          url: ${PKG_URL}/mnemostxt-${CI_COMMIT_TAG}.apk
+          direct_asset_path: /mnemostxt.apk
           link_type: package
-          direct_asset_path: /mnemos.apk
+        - name: Windows installer (mnemostxt-setup.exe)
+          url: ${PKG_URL}/mnemostxt-${CI_COMMIT_TAG}-setup.exe
+          direct_asset_path: /mnemostxt-setup.exe
+          link_type: package
+        - name: Linux (mnemostxt.deb)
+          url: ${PKG_URL}/mnemostxt-${CI_COMMIT_TAG}-amd64.deb
+          direct_asset_path: /mnemostxt.deb
+          link_type: package
+        - name: SHA256SUMS
+          url: ${PKG_URL}/SHA256SUMS
+          link_type: other

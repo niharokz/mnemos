@@ -1,0 +1,70 @@
+// Editor look: nss tokens through CSS variables, so dark/light switch without
+// rebuilding the editor. Syntax colours are --syn-* in styles/app.css.
+import { EditorView } from '@codemirror/view';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags as t } from '@lezer/highlight';
+
+const base = EditorView.theme({
+  '&': { height: '100%', color: 'var(--nss-fg)', backgroundColor: 'transparent', fontSize: 'var(--ed-font-size)' },
+  '.cm-scroller': { fontFamily: 'var(--ed-font)', lineHeight: 'var(--ed-line-height)', overscrollBehavior: 'contain' },
+  '.cm-content': { caretColor: 'var(--nss-ink)', padding: '6px 0 40vh' },
+  '.cm-cursor, .cm-dropCursor': { borderLeft: '2px solid var(--nss-ink)' },
+  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': { backgroundColor: 'var(--ed-selection) !important' },
+  '.cm-selectionMatch': { backgroundColor: 'var(--ed-match)' },
+  '.cm-searchMatch': { backgroundColor: 'var(--ed-match)', outline: '1px solid var(--nss-accent)' },
+  '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'var(--ed-match-strong)' },
+  '.cm-activeLine': { backgroundColor: 'var(--ed-active-line)' },
+  '.cm-gutters': { backgroundColor: 'transparent', color: 'var(--ed-gutter)', border: 'none', paddingRight: '6px' },
+  '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--nss-ink)' },
+  '.cm-lineNumbers .cm-gutterElement': { padding: '0 6px 0 12px', minWidth: '3ch' },
+  '.cm-foldGutter .cm-gutterElement': { color: 'var(--nss-muted)', cursor: 'pointer' },
+  '.cm-foldPlaceholder': { backgroundColor: 'var(--nss-surface-2)', border: '1px solid var(--nss-line)', color: 'var(--nss-muted)', padding: '0 6px', borderRadius: '6px' },
+  '&.cm-focused .cm-matchingBracket': { backgroundColor: 'var(--ed-match)', outline: '1px solid var(--nss-accent)' },
+  '&.cm-focused .cm-nonmatchingBracket': { color: 'var(--nss-bad)' },
+  '.cm-tooltip': { backgroundColor: 'var(--nss-surface)', border: '1px solid var(--nss-line)', borderRadius: '9px', boxShadow: 'var(--nss-shadow)', overflow: 'hidden' },
+  '.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--nss-accent)', color: 'var(--nss-on-accent)' },
+  '.cm-panels': { backgroundColor: 'var(--nss-surface)', color: 'var(--nss-fg)' },
+  '.cm-panels.cm-panels-top': { borderBottom: '1px solid var(--nss-line)' },
+  '.cm-panels.cm-panels-bottom': { borderTop: '1px solid var(--nss-line)' },
+  '.cm-panel.cm-search': { padding: '8px 10px', fontFamily: 'var(--nss-sans)', fontSize: '13px' },
+  '.cm-panel.cm-search input, .cm-panel.cm-gotoLine input': { minHeight: '30px', width: 'auto', padding: '3px 8px', margin: '2px 4px 2px 0', fontSize: '13px' },
+  '.cm-panel.cm-search button, .cm-panel.cm-gotoLine button': { minHeight: '30px', padding: '3px 10px', margin: '2px 4px 2px 0', backgroundImage: 'none', fontSize: '13px' },
+  '.cm-panel.cm-search label': { fontSize: '12.5px', color: 'var(--nss-muted)', marginRight: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' },
+  '.cm-panel.cm-search input[type=checkbox]': { minHeight: '0', width: '14px', height: '14px', margin: '0', accentColor: 'var(--nss-accent)' },
+  '.cm-panel.cm-search [name=close]': { position: 'absolute', top: '6px', right: '8px', minHeight: '28px', fontSize: '18px', color: 'var(--nss-muted)', background: 'transparent', border: '0' },
+  '.cm-highlightSpace': { backgroundImage: 'radial-gradient(circle at 50% 55%, var(--ed-whitespace) 11%, transparent 15%)' },
+  '.cm-highlightTab': { backgroundImage: 'linear-gradient(to right, transparent 45%, var(--ed-whitespace) 45%, var(--ed-whitespace) 55%, transparent 55%)', backgroundSize: '100% 1px', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' },
+  '.cm-trailingSpace': { backgroundColor: 'color-mix(in srgb, var(--nss-bad) 25%, transparent)' },
+});
+
+const highlight = HighlightStyle.define([
+  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: 'var(--syn-comment)', fontStyle: 'italic' },
+  { tag: [t.keyword, t.controlKeyword, t.moduleKeyword, t.operatorKeyword, t.definitionKeyword, t.modifier], color: 'var(--syn-keyword)' },
+  { tag: [t.string, t.special(t.string), t.character, t.docString], color: 'var(--syn-string)' },
+  { tag: [t.regexp, t.escape], color: 'var(--syn-regexp)' },
+  { tag: [t.number, t.integer, t.float, t.bool, t.null, t.atom, t.unit], color: 'var(--syn-number)' },
+  { tag: [t.function(t.variableName), t.function(t.propertyName), t.macroName], color: 'var(--syn-function)' },
+  { tag: [t.typeName, t.className, t.namespace, t.standard(t.typeName)], color: 'var(--syn-type)' },
+  { tag: [t.definition(t.variableName), t.labelName], color: 'var(--syn-def)' },
+  { tag: [t.propertyName, t.attributeName], color: 'var(--syn-property)' },
+  { tag: [t.variableName, t.self], color: 'var(--syn-variable)' },
+  { tag: [t.tagName, t.angleBracket], color: 'var(--syn-tag)' },
+  { tag: [t.operator, t.punctuation, t.separator, t.bracket], color: 'var(--syn-punct)' },
+  { tag: [t.meta, t.processingInstruction, t.annotation], color: 'var(--syn-meta)' },
+  { tag: t.invalid, color: 'var(--nss-bad)' },
+  { tag: t.heading, color: 'var(--syn-heading)', fontWeight: '700' },
+  { tag: [t.heading1], color: 'var(--syn-heading)', fontWeight: '700', fontSize: '1.15em' },
+  { tag: [t.heading2], color: 'var(--syn-heading)', fontWeight: '700', fontSize: '1.08em' },
+  { tag: t.strong, fontWeight: '700' },
+  { tag: t.emphasis, fontStyle: 'italic' },
+  { tag: t.strikethrough, textDecoration: 'line-through' },
+  { tag: [t.link, t.url], color: 'var(--syn-link)', textDecoration: 'underline' },
+  { tag: t.monospace, color: 'var(--syn-string)' },
+  { tag: [t.quote], color: 'var(--syn-comment)' },
+  { tag: [t.list, t.contentSeparator], color: 'var(--syn-keyword)' },
+  { tag: t.inserted, color: 'var(--nss-ok)' },
+  { tag: t.deleted, color: 'var(--nss-bad)' },
+  { tag: t.changed, color: 'var(--nss-warn)' },
+]);
+
+export const editorTheme = [base, syntaxHighlighting(highlight, { fallback: true })];

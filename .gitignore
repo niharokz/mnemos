@@ -1,20 +1,31 @@
 # secrets and local data
 .env
 .env.*
-.private-words
 !.env.example
-/notes/
-# patches dropped in by hand (unzip -o patch/<name>.zip); never committed
+.private-words
+*.jks
+keystore.env
+keystore.properties
+# laptop-only folders (concept art, old handoff, patch zips)
+/inspiration/
 /patch/
+/mnemos_handoff.md
 # build output
-/mnemos
-/bin/
 /dist/
-tools/codemirror/node_modules/
+frontend/node_modules/
+frontend/dist/
+app/target/
+app/gen/
+server/web/dist/*
+!server/web/dist/.keep
+/server/mnemostxt
 # editors / OS
 .idea/
 .vscode/
 *.swp
 .DS_Store
 Thumbs.db
-/.gradle-home/
+
+# personal notes with real paths (never pushed)
+/private/
+/mnemostxt_handoff.md

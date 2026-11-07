@@ -1,12 +1,11 @@
 .git
+**/node_modules
+frontend/dist
+app
+dist
+assets
+docs
+docker
+patch
+inspiration
 .env
-.env.*
-!.env.example
-.private-words
-notes/
-tools/
-scripts/
-*.md
-# the Android app is built on its own (android/build.sh); only its demo vault is embedded
-android/*
-!android/demo-vault

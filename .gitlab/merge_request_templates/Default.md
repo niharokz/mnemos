@@ -1,9 +1,9 @@
-## What and why
+## What changes
 
-## Checks
+## Checked
 
-- [ ] `go vet ./... && go test ./...` and `gofmt -l cmd internal web` is empty
-- [ ] `sh scripts/check-public.sh` (no secrets, keys or private words)
-- [ ] `sh scripts/check-version.sh` (only when releasing)
-- [ ] CHANGELOG.md / android/CHANGELOG.md updated (user-visible changes)
-- [ ] Android changes: `cd android && ./build.sh check` passes
+- [ ] `npm test` and `npm run build` in frontend/
+- [ ] `cargo test` in app/ (if app/ changed)
+- [ ] `go test ./...` in server/ (if server/ changed)
+- [ ] CHANGELOG.md updated
+- [ ] no secrets or personal paths (`sh scripts/check-public.sh`)
