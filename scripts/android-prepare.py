@@ -6,6 +6,8 @@ git. This script creates it when missing and applies mnemostxt's changes:
 
   1. storage permissions (All files access) in AndroidManifest.xml
   2. our MainActivity.kt (asks for access, keeps content clear of the bars)
+  2b. the Gradle task that calls back into the Tauri CLI: point it at the real
+      CLI file (started as `node <file>`, Tauri records just "tauri")
   3. the launcher icons from app/icons/android
   4. release signing from keystore.properties (written from the key folder)
 
@@ -75,6 +77,27 @@ def activity():
         die("MainActivity.kt not found in the generated project")
     shutil.copyfile(APP / "android" / "MainActivity.kt", found[0])
     print(f"android-prepare: {found[0].relative_to(ROOT)} replaced")
+
+
+# Gradle runs this from app/ (rootDirRel); the CLI lives in frontend/node_modules.
+CLI_FROM_APP = "../frontend/node_modules/@tauri-apps/cli/tauri.js"
+
+
+def build_task():
+    found = list((GEN / "buildSrc").rglob("BuildTask.kt"))
+    if not found:
+        die("BuildTask.kt not found in app/gen/android/buildSrc")
+    p = found[0]
+    s = p.read_text()
+    if CLI_FROM_APP in s:
+        return
+    s, n1 = re.subn(r'val executable = """[^"]*""";?', 'val executable = """node""";', s, count=1)
+    s, n2 = re.subn(r'val args = listOf\([^)]*\);?',
+                    f'val args = listOf("{CLI_FROM_APP}", "android", "android-studio-script");', s, count=1)
+    if not (n1 and n2):
+        die(f"unexpected BuildTask.kt layout in {p}")
+    p.write_text(s)
+    print("android-prepare: Gradle build task points at the Tauri CLI")
 
 
 def icons():
@@ -158,6 +181,7 @@ if __name__ == "__main__":
     init()
     manifest()
     activity()
+    build_task()
     icons()
     signing()
     keystore(a.keys)

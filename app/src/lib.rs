@@ -189,6 +189,7 @@ pub fn run() {
     let cwd = std::env::current_dir().unwrap_or_default();
     let startup = if cfg!(any(target_os = "android", target_os = "ios")) { vec![] } else { cli_paths(&args, &cwd) };
 
+    #[allow(unused_mut)] // only the desktop build adds plugins below
     let mut builder = tauri::Builder::default();
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
