@@ -44,7 +44,8 @@ def init():
     if not TAURI.exists():
         die("run `npm ci` in frontend/ first (it installs the Tauri CLI)")
     print("android-prepare: generating app/gen/android (tauri android init)")
-    subprocess.run([str(TAURI), "android", "init", "--ci"], cwd=APP, check=True)
+    if subprocess.run([str(TAURI), "android", "init", "--ci"], cwd=APP).returncode != 0:
+        die("`tauri android init` failed (its message is just above)")
 
 
 def manifest():

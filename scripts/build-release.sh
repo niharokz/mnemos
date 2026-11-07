@@ -16,7 +16,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 TARGETS=${*:-deb exe apk}
-BUILDER_TAG=3   # bump when docker/builder/Dockerfile changes (and the image: in .gitlab-ci.yml)
+BUILDER_TAG=4   # bump when docker/builder/Dockerfile changes (and the image: in .gitlab-ci.yml)
 IMAGE=mnemostxt-builder:$BUILDER_TAG
 KEY_DIR=${MNEMOSTXT_KEY_DIR:-${KEYS_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/keys}/.mnemostxt-keys}
 

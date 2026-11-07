@@ -68,4 +68,10 @@ RUN set -e; T=/opt/tauri-tools/tauri/NSIS; mkdir -p $T/Plugins/x86-unicode/addit
 # taken unchanged from NSIS 3.09. Last layer, so the heavy ones stay cached.
 COPY RestartManager.nsh /usr/share/nsis/Include/Win/RestartManager.nsh
 
+# What the Android build would otherwise download in every job: the SDK
+# platform Tauri's Gradle project compiles against, and the Rust targets
+# `tauri android init` installs.
+RUN sdkmanager --install "platforms;android-37.0" >/dev/null \
+ && rustup target add armv7-linux-androideabi i686-linux-android x86_64-linux-android
+
 WORKDIR /src

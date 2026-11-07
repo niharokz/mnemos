@@ -109,7 +109,7 @@ release-files:
   stage: build
   <<: *tag-only
   tags: [mnemostxt-app]             # your Docker runner (docs/RUNNER.md)
-  image: mnemostxt-builder:3        # = BUILDER_TAG in scripts/build-release.sh
+  image: mnemostxt-builder:4        # = BUILDER_TAG in scripts/build-release.sh
   needs: [server, versions, public]
   variables:
     BUILD_CACHE: /build-cache
@@ -117,20 +117,11 @@ release-files:
     GIT_CLEAN_FLAGS: -ffdx -e app/gen/
   script:
     - sh scripts/check-version.sh "$CI_COMMIT_TAG"
-    - sh scripts/build-in-container.sh deb exe apk
-    - V=$(cat VERSION)
-    # into the generic package registry (file names carry the tag, e.g. mnemostxt-v0.0.1.apk)
-    - |
-      for pair in "mnemostxt-$V-amd64.deb:mnemostxt-$CI_COMMIT_TAG-amd64.deb" "mnemostxt-$V-setup.exe:mnemostxt-$CI_COMMIT_TAG-setup.exe" "mnemostxt-$V.apk:mnemostxt-$CI_COMMIT_TAG.apk" "SHA256SUMS:SHA256SUMS"; do
-        f=${pair%%:*}; n=${pair#*:}
-        curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "dist/release/$f" "$PKG_URL/$n"
-        echo " uploaded $n"
-      done
-    # release notes: this version's section of CHANGELOG.md
-    - awk -v v="$V" '$0 ~ "^## "v"( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md > release-notes.md
+    - sh scripts/build-in-container.sh deb exe apk     # one ✓ line per step; details collapsed
+    - sh scripts/upload-release.sh                     # package registry + release-notes.md
   artifacts:
     expire_in: 30 days
-    paths: [dist/release/, release-notes.md]
+    paths: [dist/release/, release-notes.md]     # incl. dist/release/logs/ (full build logs)
 
 # ── release ────────────────────────────────────────────────────────────────
 release:

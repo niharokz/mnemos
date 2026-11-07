@@ -14,7 +14,7 @@ runner folder/                       e.g. <deploy folder>/gtlbrunner
 host: only Docker
  ├─ gtlbrunner             (container: gitlab-runner, Docker executor)
  │    starts each job as a sibling container ↓
- ├─ mnemostxt release job  (image mnemostxt-builder:3)
+ ├─ mnemostxt release job  (image mnemostxt-builder:4)
  │    mounts: volume mnemostxt-build-cache → /build-cache, keys/mnemostxt → /keys (read-only)
  └─ volume mnemostxt-build-cache
 ```
@@ -93,7 +93,7 @@ signed with the same key.
 ## 6. Release
 
 See [RELEASING.md](RELEASING.md). The `release-files` job log header names
-the runner `mnemostxt-app` and the image `mnemostxt-builder:3`.
+the runner `mnemostxt-app` and the image `mnemostxt-builder:4`.
 
 ## Adding another app
 
