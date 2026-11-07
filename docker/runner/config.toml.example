@@ -1,0 +1,37 @@
+# Example config/config.toml for the runner folder (docs/RUNNER.md).
+# `register` writes each [[runners]] block (name, url, id, token, executor);
+# add the lines marked ◀ by hand, then: docker compose restart runner
+#
+# Paths in `volumes` are paths on the HOST (the runner asks the host's Docker
+# to mount them), so use the absolute path of the runner folder.
+concurrent = 1                      # ◀ one release build at a time
+check_interval = 0
+
+[session_server]
+  session_timeout = 1800
+
+# ── one block per app: each app's jobs see only their own key and cache ──
+[[runners]]
+  name = "mnemostxt-app"
+  url = "https://gitlab.com"
+  token = "glrt-WRITTEN-BY-REGISTER"
+  executor = "docker"
+  [runners.docker]
+    image = "alpine:3.20"
+    pull_policy = ["if-not-present"]                             # ◀ use the locally built release image
+    allowed_images = ["mnemostxt-builder:*", "alpine:*"]         # ◀ nothing else may run here
+    allowed_pull_policies = ["if-not-present"]                   # ◀
+    privileged = false
+    disable_cache = false
+    volumes = [
+      "/cache",
+      "mnemostxt-build-cache:/build-cache",                       # ◀ cargo/gradle/npm caches (named volume)
+      "/ABSOLUTE/PATH/TO/RUNNER/FOLDER/keys/mnemostxt:/keys:ro",  # ◀ signing key, read-only
+    ]
+
+# [[runners]]                        # later: Natlas (its CI must run in its own builder image too)
+#   name = "natlas-app"
+#   ...
+#   [runners.docker]
+#     allowed_images = ["natlas-builder:*", "alpine:*"]
+#     volumes = ["/cache", "natlas-build-cache:/build-cache", "/ABSOLUTE/PATH/TO/RUNNER/FOLDER/keys/natlas:/keys:ro"]

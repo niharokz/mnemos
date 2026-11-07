@@ -2,7 +2,7 @@
 #
 #   every push and merge request (GitLab shared runners)
 #     check    frontend tests + build, Go vet/test, Rust fmt/test, versions, no secrets, web image
-#   a version tag vX.Y.Z (your own build runner, tag "mnemostxt-build")
+#   a version tag vX.Y.Z (your own Docker runner, tag "mnemostxt-app")
 #     build    mnemostxt-X.Y.Z-amd64.deb, mnemostxt-X.Y.Z-setup.exe, mnemostxt-X.Y.Z.apk
 #     release  files into the package registry + a GitLab release with permanent links:
 #              …/-/releases/permalink/latest/downloads/mnemostxt.apk  (and .deb, -setup.exe)
@@ -101,16 +101,23 @@ web-image:
     - docker build -t mnemostxt:ci .
 
 # ── build (own runner) ─────────────────────────────────────────────────────
+# Runs on your runner's Docker executor *inside* the builder image, which you
+# build once on that machine (docs/RUNNER.md). The runner config mounts the
+# build cache at /build-cache and the signing key at /keys (read-only), so
+# nothing else on the host is touched.
 release-files:
   stage: build
   <<: *tag-only
-  tags: [mnemostxt-build]          # your shell runner (docs/RUNNER.md)
-  needs: [frontend, server, versions, public]
+  tags: [mnemostxt-app]             # your Docker runner (docs/RUNNER.md)
+  image: mnemostxt-builder:1        # = BUILDER_TAG in scripts/build-release.sh
+  needs: [server, versions, public]
   variables:
+    BUILD_CACHE: /build-cache
+    KEY_DIR: /keys
     GIT_CLEAN_FLAGS: -ffdx -e app/gen/
   script:
     - sh scripts/check-version.sh "$CI_COMMIT_TAG"
-    - sh scripts/build-release.sh deb exe apk
+    - sh scripts/build-in-container.sh deb exe apk
     - V=$(cat VERSION)
     # into the generic package registry (file names carry the tag, e.g. mnemostxt-v0.0.1.apk)
     - |

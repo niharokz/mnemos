@@ -16,7 +16,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 TARGETS=${*:-deb exe apk}
-BUILDER_TAG=1   # bump when docker/builder/Dockerfile changes
+BUILDER_TAG=1   # bump when docker/builder/Dockerfile changes (and the image: in .gitlab-ci.yml)
 IMAGE=mnemostxt-builder:$BUILDER_TAG
 KEY_DIR=${MNEMOSTXT_KEY_DIR:-${KEYS_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/keys}/.mnemostxt-keys}
 
@@ -32,11 +32,9 @@ esac
 KEYS_MOUNT=""
 [ -d "$KEY_DIR" ] && KEYS_MOUNT="-v $KEY_DIR:/keys:ro"
 
-# runs as you, so files in dist/ are yours (HOME inside is the cache volume)
+# runs as you, so files in dist/ are yours; caches live in a Docker volume
 # shellcheck disable=SC2086
-docker run --rm --user "$(id -u):$(id -g)" \
-  -e HOME=/cache/home -e CARGO_HOME=/cache/cargo -e CARGO_TARGET_DIR=/cache/target \
-  -e GRADLE_USER_HOME=/cache/gradle -e npm_config_cache=/cache/npm -e XWIN_CACHE_DIR=/cache/xwin \
-  -v mnemostxt-build-cache:/cache -v "$PWD:/src" $KEYS_MOUNT \
+docker run --rm --user "$(id -u):$(id -g)" -e BUILD_CACHE=/cache -e KEY_DIR=/keys \
+  -v mnemostxt-build-cache:/cache -v "$PWD:/src" -w /src $KEYS_MOUNT \
   "$IMAGE" sh scripts/build-in-container.sh $TARGETS
 ls -l dist/release

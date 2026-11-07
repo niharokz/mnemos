@@ -1,14 +1,23 @@
 #!/bin/sh
-# Runs inside the builder image (see scripts/build-release.sh).
+# Runs inside the builder image (docker/builder/Dockerfile), either
+#   - as the GitLab release job (Docker executor, image mnemostxt-builder:N), or
+#   - from scripts/build-release.sh for a build by hand.
+# BUILD_CACHE  folder for cargo/target/gradle/npm/xwin caches (a Docker volume)
+# KEY_DIR      folder with mnemostxt.jks + keystore.env (read-only mount)
 set -eu
-cd /src
+cd "$(dirname "$0")/.."
+ROOT=$(pwd)
+C=${BUILD_CACHE:-/cache}
+KEY_DIR=${KEY_DIR:-/keys}
+export HOME=$C/home CARGO_HOME=$C/cargo CARGO_TARGET_DIR=$C/target GRADLE_USER_HOME=$C/gradle \
+       npm_config_cache=$C/npm XWIN_CACHE_DIR=$C/xwin
+mkdir -p "$HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR" "$GRADLE_USER_HOME" "$npm_config_cache" "$XWIN_CACHE_DIR"
+# the toolchain (rustc, cargo-xwin) stays in the image; the cache holds registries
+[ -d /usr/local/rustup ] && export PATH=/usr/local/cargo/bin:$PATH RUSTUP_HOME=/usr/local/rustup
 V=$(tr -d ' \n\r' < VERSION)
 OUT=dist/release
-mkdir -p "$OUT" /cache/home /cache/cargo /cache/target /cache/gradle /cache/npm /cache/xwin
-# the image's toolchain lives in /usr/local/cargo; the cache holds the registry
-[ -d /cache/cargo/bin ] || cp -r /usr/local/cargo/bin /cache/cargo/ 2>/dev/null || true
-export PATH=/usr/local/cargo/bin:$PATH RUSTUP_HOME=/usr/local/rustup
-TAURI=/src/frontend/node_modules/.bin/tauri
+mkdir -p "$OUT"
+TAURI=$ROOT/frontend/node_modules/.bin/tauri
 
 echo "▸ mnemostxt $V: $*"
 sh scripts/check-version.sh
@@ -20,16 +29,16 @@ for t in "$@"; do
     deb)
       echo "▸ Linux .deb"
       (cd app && "$TAURI" build --bundles deb --ci)
-      cp /cache/target/release/bundle/deb/mnemostxt_"$V"_amd64.deb "$OUT/mnemostxt-$V-amd64.deb"
+      cp $CARGO_TARGET_DIR/release/bundle/deb/mnemostxt_"$V"_amd64.deb "$OUT/mnemostxt-$V-amd64.deb"
       ;;
     exe)
       echo "▸ Windows setup.exe (cross-compiled)"
       (cd app && "$TAURI" build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis --ci)
-      cp /cache/target/x86_64-pc-windows-msvc/release/bundle/nsis/mnemostxt_"$V"_x64-setup.exe "$OUT/mnemostxt-$V-setup.exe"
+      cp $CARGO_TARGET_DIR/x86_64-pc-windows-msvc/release/bundle/nsis/mnemostxt_"$V"_x64-setup.exe "$OUT/mnemostxt-$V-setup.exe"
       ;;
     apk)
       echo "▸ Android .apk"
-      python3 scripts/android-prepare.py --keys /keys
+      python3 scripts/android-prepare.py --keys "$KEY_DIR"
       (cd app && "$TAURI" android build --apk --target aarch64 --ci)
       apk=$(find app/gen/android/app/build/outputs/apk -name '*release*.apk' ! -name '*unsigned*' | head -1)
       [ -n "$apk" ] || { echo "✗ no signed release APK found — is keystore.properties right?"; find app/gen/android/app/build/outputs -name '*.apk'; exit 1; }

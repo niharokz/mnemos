@@ -1,0 +1,29 @@
+# One GitLab runner, in Docker, for all your app releases (mnemostxt, Natlas,
+# Median, ...). Copy this file into an empty folder on the server and follow
+# docs/RUNNER.md. Everything the runner needs stays in that folder:
+#
+#   config/config.toml   runner settings and tokens (one [[runners]] per app)
+#   keys/<app>/          each app's signing key, mounted read-only into that app's jobs
+#
+#   docker compose up -d                          start / update the runner
+#   docker compose build mnemostxt-builder        build / refresh mnemostxt's release image
+#
+# Jobs run as sibling containers on the host's Docker (Docker executor).
+services:
+  runner:
+    image: gitlab/gitlab-runner:alpine            # pin a version (alpine-vX.Y.Z) once it works
+    container_name: gtlbrunner
+    restart: unless-stopped
+    volumes:
+      - ./config:/etc/gitlab-runner                 # keep private: holds the runner tokens
+      - /var/run/docker.sock:/var/run/docker.sock   # to start job containers
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # Release images: not running services, only built here (profile "build").
+  # Built straight from each app's repository, so no checkout is needed.
+  mnemostxt-builder:
+    profiles: [build]
+    image: mnemostxt-builder:1                    # = BUILDER_TAG in mnemostxt's scripts/build-release.sh
+    build: https://gitlab.com/niharokz/mnemostxt.git#main:docker/builder
