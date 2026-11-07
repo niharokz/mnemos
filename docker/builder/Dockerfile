@@ -43,4 +43,9 @@ RUN rustup target add x86_64-pc-windows-msvc aarch64-linux-android \
  && cargo install --locked cargo-xwin \
  && rm -rf $CARGO_HOME/registry $CARGO_HOME/git
 
+# Tauri's installer script includes Win\RestartManager.nsh, which first ships
+# with NSIS 3.09; Debian 12 has 3.08. This is NSIS's own file (zlib licence),
+# taken unchanged from NSIS 3.09. Last layer, so the heavy ones stay cached.
+COPY RestartManager.nsh /usr/share/nsis/Include/Win/RestartManager.nsh
+
 WORKDIR /src

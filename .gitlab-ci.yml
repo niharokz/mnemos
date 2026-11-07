@@ -109,7 +109,7 @@ release-files:
   stage: build
   <<: *tag-only
   tags: [mnemostxt-app]             # your Docker runner (docs/RUNNER.md)
-  image: mnemostxt-builder:1        # = BUILDER_TAG in scripts/build-release.sh
+  image: mnemostxt-builder:2        # = BUILDER_TAG in scripts/build-release.sh
   needs: [server, versions, public]
   variables:
     BUILD_CACHE: /build-cache
