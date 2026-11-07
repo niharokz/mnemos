@@ -46,15 +46,18 @@ protected, and the signing key exists.
 
 ## A release failed
 
-Fix the problem, commit, push, then move the tag to the fixed commit:
+`v*` tags are protected, so GitLab refuses to move them (`Protected tags
+cannot be updated`). Fix the problem, commit, push, then:
 
-```sh
-git tag -fa v0.0.2 -m "mnemostxt 0.0.2"
-git push -f origin v0.0.2
-```
-
-If a release was already created for that tag, delete it first in
-**Deploy → Releases** (and its files in **Deploy → Package registry**).
+1. GitLab → **Code → Tags** → delete `vX.Y.Z` (the trash icon; maintainers
+   may delete protected tags in the UI). If a release was already created,
+   delete it first in **Deploy → Releases**, and its files in
+   **Deploy → Package registry**.
+2. Re-create the tag on the fixed commit and push it:
+   ```sh
+   git tag -fa vX.Y.Z -m "mnemostxt X.Y.Z"
+   git push -f origin vX.Y.Z      # GitLab: new tag; GitHub/Codeberg: moved
+   ```
 
 ## Roll back the web app
 

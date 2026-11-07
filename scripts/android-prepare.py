@@ -33,7 +33,11 @@ def die(msg):
 
 
 def init():
-    if (GEN / "app" / "build.gradle.kts").exists():
+    gradle = GEN / "app" / "build.gradle.kts"
+    if gradle.exists() and MARK in gradle.read_text() and SIGNING_MARK not in gradle.read_text():
+        print("android-prepare: patched by an older version — regenerating app/gen/android")
+        shutil.rmtree(GEN)
+    if gradle.exists():
         return
     if not TAURI.exists():
         die("run `npm ci` in frontend/ first (it installs the Tauri CLI)")
@@ -85,28 +89,32 @@ def icons():
     print("android-prepare: launcher icons copied")
 
 
-SIGNING = '''
-    // mnemostxt: release signing from keystore.properties (never committed)
+# Kotlin stdlib only: inside `android { }` the name `java` is Gradle's Java
+# extension, so java.util.Properties does not resolve there.
+SIGNING_MARK = "mnemostxt-signing-v2"
+SIGNING = """
+    // mnemostxt-signing-v2: release signing from keystore.properties (never committed)
     signingConfigs {
         create("release") {
-            val props = java.util.Properties()
-            val file = rootProject.file("keystore.properties")
-            if (file.exists()) {
-                file.inputStream().use { props.load(it) }
-                storeFile = file(props.getProperty("storeFile"))
-                storePassword = props.getProperty("storePassword")
-                keyAlias = props.getProperty("keyAlias")
-                keyPassword = props.getProperty("keyPassword")
+            val ks = rootProject.file("keystore.properties")
+            if (ks.exists()) {
+                val p = ks.readLines()
+                    .filter { it.contains('=') && !it.trimStart().startsWith("#") }
+                    .associate { it.substringBefore('=').trim() to it.substringAfter('=').trim() }
+                storeFile = file(p.getValue("storeFile"))
+                storePassword = p.getValue("storePassword")
+                keyAlias = p.getValue("keyAlias")
+                keyPassword = p.getValue("keyPassword")
             }
         }
     }
-'''
+"""
 
 
 def signing():
     p = GEN / "app" / "build.gradle.kts"
     s = p.read_text()
-    if MARK in s:
+    if SIGNING_MARK in s:
         return
     s, n = re.subn(r"(\n\s*buildTypes\s*\{)", SIGNING.rstrip("\n") + r"\1", s, count=1)
     if not n:
